@@ -1,0 +1,7 @@
+{
+  "data": {
+    "type": "reviewSubmissions",
+    "id": "submission-1",
+    "attributes": { "platform": "IOS", "submitted": false, "state": "READY_FOR_REVIEW" }
+  }
+}

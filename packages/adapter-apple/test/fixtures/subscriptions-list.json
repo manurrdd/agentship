@@ -1,0 +1,10 @@
+{
+  "data": [
+    {
+      "type": "subscriptions",
+      "id": "sub-1",
+      "attributes": { "name": "Pro Monthly", "productId": "com.agentship.demo.pro.monthly", "subscriptionPeriod": "ONE_MONTH", "state": "APPROVED" },
+      "relationships": { "group": { "data": { "type": "subscriptionGroups", "id": "group-pro" } } }
+    }
+  ]
+}

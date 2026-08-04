@@ -1,0 +1,5 @@
+{
+  "data": [
+    { "type": "subscriptionGroups", "id": "group-pro", "attributes": { "referenceName": "Pro" } }
+  ]
+}

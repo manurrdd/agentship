@@ -1,0 +1,32 @@
+{
+  "data": [
+    {
+      "type": "builds",
+      "id": "build-1042",
+      "attributes": {
+        "version": "1042",
+        "uploadedDate": "2026-08-01T10:04:12-07:00",
+        "expired": false,
+        "processingState": "VALID",
+        "platform": "IOS",
+        "usesNonExemptEncryption": false,
+        "minOsVersion": "17.0"
+      },
+      "relationships": {
+        "preReleaseVersion": { "data": { "type": "preReleaseVersions", "id": "pre-140" } }
+      }
+    },
+    {
+      "type": "builds",
+      "id": "build-1041",
+      "attributes": {
+        "version": "1041",
+        "uploadedDate": "2026-06-01T08:00:00-07:00",
+        "expired": true,
+        "processingState": "VALID",
+        "platform": "IOS"
+      }
+    }
+  ],
+  "links": { "self": "https://api.appstoreconnect.apple.com/v1/apps/1234567890/builds" }
+}

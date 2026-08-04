@@ -1,0 +1,21 @@
+{
+  "packageName": "com.agentship.demo",
+  "productId": "com.agentship.demo.pro.monthly",
+  "listings": [
+    { "languageCode": "en-US", "title": "Lumo Pro", "description": "Everything, monthly." }
+  ],
+  "basePlans": [
+    {
+      "basePlanId": "monthly",
+      "state": "ACTIVE",
+      "autoRenewingBasePlanType": { "billingPeriodDuration": "P1M" },
+      "regionalConfigs": [
+        {
+          "regionCode": "US",
+          "newSubscriberAvailability": true,
+          "price": { "currencyCode": "USD", "units": "4", "nanos": 990000000 }
+        }
+      ]
+    }
+  ]
+}

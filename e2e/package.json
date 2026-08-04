@@ -1,0 +1,14 @@
+{
+  "name": "@agentship/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "Consolidated end-to-end suite: complete agent journeys against the mock stores, the kill matrix and the no-telemetry check. No source: harness and scenarios only.",
+  "dependencies": {
+    "@agentship/analyzer": "workspace:*",
+    "@agentship/core": "workspace:*",
+    "@agentship/mcp": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.30.0"
+  }
+}

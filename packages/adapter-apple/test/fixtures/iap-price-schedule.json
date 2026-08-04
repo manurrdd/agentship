@@ -1,0 +1,10 @@
+{
+  "data": [
+    {
+      "type": "inAppPurchasePrices",
+      "id": "price-1",
+      "attributes": { "customerPrice": "9.99", "currency": "USD" },
+      "relationships": { "territory": { "data": { "type": "territories", "id": "USA" } } }
+    }
+  ]
+}

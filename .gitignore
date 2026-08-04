@@ -1,0 +1,43 @@
+# Build output
+dist/
+*.tsbuildinfo
+
+# Dependencies
+node_modules/
+
+# Agentship state (never committed)
+.agentship/state/
+.agentship/pending/
+.agentship/logs/
+
+# Secrets — never commit, in any directory
+*.p8
+*.keystore
+*.jks
+*.mobileprovision
+*.p12
+*.cer
+service-account*.json
+**/service-account*.json
+
+# Local env
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Test scratch
+coverage/
+tmp/
+
+# Internal planning and design notes: kept locally, never published.
+docs/
+
+# Runtime data and the README copied into the publishable package at build time.
+packages/cli/tools.lock.json
+packages/cli/data/
+packages/cli/README.md

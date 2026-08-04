@@ -1,0 +1,6 @@
+{
+  "convertedRegionPrices": {
+    "GB": { "price": { "currencyCode": "GBP", "units": "4", "nanos": 490000000 } },
+    "JP": { "price": { "currencyCode": "JPY", "units": "750", "nanos": 0 } }
+  }
+}

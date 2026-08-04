@@ -1,0 +1,35 @@
+{
+  "data": [
+    {
+      "type": "betaGroups",
+      "id": "group-internal",
+      "attributes": {
+        "name": "Team",
+        "isInternalGroup": true,
+        "publicLinkEnabled": false,
+        "createdDate": "2026-01-05T09:00:00-08:00"
+      }
+    },
+    {
+      "type": "betaGroups",
+      "id": "group-external",
+      "attributes": {
+        "name": "Beta Testers",
+        "isInternalGroup": false,
+        "publicLinkEnabled": false,
+        "createdDate": "2026-02-11T09:00:00-08:00"
+      }
+    },
+    {
+      "type": "betaGroups",
+      "id": "group-public",
+      "attributes": {
+        "name": "Public Beta",
+        "isInternalGroup": false,
+        "publicLinkEnabled": true,
+        "publicLink": "https://testflight.apple.com/join/AbCdEfGh",
+        "publicLinkLimit": 5000
+      }
+    }
+  ]
+}

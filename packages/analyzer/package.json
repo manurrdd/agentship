@@ -1,0 +1,31 @@
+{
+  "name": "@agentship/analyzer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "agentship-source": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "data"
+  ],
+  "scripts": {
+    "build": "tsup"
+  },
+  "dependencies": {
+    "@agentship/core": "workspace:*",
+    "plist": "^3.1.0",
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/plist": "^3.0.5"
+  }
+}

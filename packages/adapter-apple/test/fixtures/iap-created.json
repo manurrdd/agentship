@@ -1,0 +1,7 @@
+{
+  "data": {
+    "type": "inAppPurchases",
+    "id": "iap-new",
+    "attributes": { "name": "coins", "productId": "com.agentship.demo.coins", "inAppPurchaseType": "CONSUMABLE", "state": "MISSING_METADATA" }
+  }
+}

@@ -1,0 +1,7 @@
+name: broken_app
+version: 0.1.0+1
+dependencies:
+  flutter:
+    sdk: flutter
+   bad_indentation: ^1.0.0
+	tab_here: true

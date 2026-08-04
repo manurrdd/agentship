@@ -1,0 +1,15 @@
+[
+  {
+    "language": "en-US",
+    "title": "Agentship Demo",
+    "shortDescription": "Publish from your agent",
+    "fullDescription": "The old full description.",
+    "video": "https://youtu.be/abc123"
+  },
+  {
+    "language": "es-ES",
+    "title": "Agentship Demo",
+    "shortDescription": "Publica desde tu agente",
+    "fullDescription": "La descripcion antigua."
+  }
+]

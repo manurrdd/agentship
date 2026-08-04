@@ -1,0 +1,71 @@
+schemaVersion: 1
+store: apple
+entries:
+  - id: apple:resolution-center
+    class: agent_browser
+    category: review
+    title: Read and answer App Review messages
+    reason: >-
+      Reviewer messages, attachments and rejection detail live in Resolution Center. The
+      public API exposes only a coarse submission state, so the reason a version was
+      rejected is not readable any other way.
+    console:
+      url: https://appstoreconnect.apple.com/apps
+      path: [Apps, '<your app>', App Review, Resolution Center]
+    preconditions:
+      - A version of this app has been submitted and App Review has replied.
+    steps:
+      - instruction: >-
+          Open Resolution Center and read the reviewer's message in full, including any
+          screenshots attached to it.
+      - instruction: >-
+          Summarise it for the user and agree with them what to change. Agentship re-plans the
+          version once the manifest reflects the decision.
+      - instruction: >-
+          Reply to the reviewer only with content the user approved. Never draft a reply on
+          their behalf and send it.
+        caution: >-
+          A reply to App Review is a statement by the developer about their own app. Getting
+          it wrong costs another review cycle at best.
+    verify:
+      kind: api
+      summary: The version is editable again, so a corrected build can be resubmitted.
+      check: apple:version-editable
+      params:
+        version: '{{release.version}}'
+    lastVerified: '2026-08-03'
+
+  - id: apple:release-version
+    class: agent_browser
+    category: review
+    title: Release the approved version to the App Store
+    reason: >-
+      Releasing a version Apple is holding for manual release goes through the
+      appStoreVersionReleaseRequests endpoint, which the pinned `asc` does not expose.
+      Agentship will not improvise a command against a live App Store account.
+    console:
+      url: https://appstoreconnect.apple.com/apps
+      path: [Apps, '<your app>', App Store, '<version>', Release This Version]
+    preconditions:
+      - App Review approved the version and it is waiting for a manual release.
+    steps:
+      - instruction: >-
+          Confirm with the user that they want this version live now. The store is holding
+          it precisely so a human chooses the moment.
+        fields:
+          - name: version
+            label: Version
+            value: '{{release.version}}'
+            source: manifest.release.version
+            rationale: The version the manifest declares and Apple has approved.
+      - instruction: Open the version in App Store Connect and press Release This Version.
+        caution: >-
+          Every App Store customer can see the app from that moment. There is no undo — the
+          only way back is submitting another version.
+    verify:
+      kind: api
+      summary: The version reports as live, or as rolling out when a phased release is on.
+      check: apple:version-live
+      params:
+        version: '{{release.version}}'
+    lastVerified: '2026-08-03'

@@ -1,0 +1,34 @@
+// !$*UTF8*$!
+{
+	objects = {
+/* Begin XCBuildConfiguration section */
+		AA0000011 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CURRENT_PROJECT_VERSION = 31;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 3.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ledgerapp.ios;
+			};
+			name = Debug;
+		};
+		AA0000012 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CURRENT_PROJECT_VERSION = 31;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 3.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ledgerapp.ios;
+			};
+			name = Release;
+		};
+		AA0000013 /* Staging */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_BUNDLE_IDENTIFIER = com.ledgerapp.ios.staging;
+			};
+			name = Staging;
+		};
+/* End XCBuildConfiguration section */
+	};
+}

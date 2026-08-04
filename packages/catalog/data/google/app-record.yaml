@@ -1,0 +1,155 @@
+schemaVersion: 1
+store: google
+entries:
+  - id: google:create-app
+    class: agent_browser
+    category: app_record
+    title: Create the app in Play Console
+    reason: >-
+      The Google Play Developer API operates on apps that already exist. Creating the app,
+      and choosing its package name, is only possible in Play Console.
+    console:
+      url: https://play.google.com/console
+      path: [All apps, Create app]
+    preconditions:
+      - The developer account is verified and can create apps.
+    steps:
+      - instruction: >-
+          Press Create app and fill the form with the values below. Show them to the user
+          first: two of these choices can never be undone.
+        fields:
+          - name: appName
+            label: App name
+            value: '{{manifest.app.name}}'
+            source: manifest.app.name
+            rationale: The store-visible name declared in the manifest.
+          - name: defaultLanguage
+            label: Default language
+            value: '{{manifest.metadata.primaryLocale}}'
+            source: manifest.metadata.primaryLocale
+            rationale: The locale the manifest treats as the primary listing.
+          - name: appOrGame
+            label: App or game
+            required: true
+            options: [App, Game]
+            rationale: >-
+              Google uses it for store categorisation and for the content rating
+              questionnaire. Only the user can say which one this is.
+          - name: freeOrPaid
+            label: Free or paid
+            required: true
+            options: [Free, Paid]
+            rationale: >-
+              Whether users pay to download the app itself. In-app purchases are a separate
+              decision.
+            caution: >-
+              A free app can be changed to paid only before it is published; a paid app can
+              be made free, but never back to paid.
+      - instruction: >-
+          Accept the developer programme declarations the form shows, and press Create app.
+      - instruction: >-
+          Confirm the package name Play Console shows matches {{field:packageName}}. Play
+          takes the package name from the first bundle uploaded, so a mismatch here means
+          every later API call addresses the wrong app.
+        fields:
+          - name: packageName
+            label: Package name
+            value: '{{manifest.stores.google.packageName}}'
+            source: manifest.stores.google.packageName
+            rationale: Read from the project, so it matches what the build declares.
+            caution: The package name of a published app can never be changed.
+    verify:
+      kind: api
+      summary: Agentship reads the app details back for this package name.
+      check: google:app-exists
+      params:
+        packageName: '{{manifest.stores.google.packageName}}'
+    lastVerified: '2026-08-03'
+
+  - id: google:first-release
+    class: agent_browser
+    category: app_record
+    title: Publish the first release from Play Console
+    reason: >-
+      Google requires a new app to reach its first release through the console. Until an app
+      has been published once, API uploads to a track are rejected.
+    console:
+      url: https://play.google.com/console
+      path: ['<your app>', Testing, Internal testing, Create new release]
+    preconditions:
+      - The app exists in Play Console.
+      - The App content declarations and the content rating questionnaire are complete.
+      - A signed app bundle exists; Agentship can build one with agentship_build.
+    steps:
+      - instruction: >-
+          Open Internal testing and press Create new release. If Play offers Play App
+          Signing, read the google:play-app-signing entry before accepting.
+      - instruction: >-
+          Upload the bundle Agentship built and give the release a name. The version code
+          inside the bundle is what every later API call addresses.
+        fields:
+          - name: versionCode
+            label: Version code
+            value: '{{manifest.release.buildNumber}}'
+            source: manifest.release.buildNumber
+            rationale: The build number the manifest declares for this release.
+            caution: >-
+              Play refuses a version code it has already seen, so the next release must use
+              a higher one.
+      - instruction: Review the release and press Start rollout to Internal testing.
+    verify:
+      kind: api
+      summary: Agentship lists the tracks and finds a release serving a build.
+      check: google:first-release-done
+    notes: >-
+      After this, Agentship can take over: every later upload and track assignment goes
+      through the API.
+    lastVerified: '2026-08-03'
+
+  - id: google:play-app-signing
+    class: agent_browser
+    category: credentials
+    title: Enrol the app in Play App Signing
+    reason: >-
+      Enrolment is a console operation with no API. It decides who holds the key that signs
+      what users install, which is not something a tool may choose for a developer.
+    console:
+      url: https://play.google.com/console
+      path: ['<your app>', Setup, App integrity, App signing]
+    preconditions:
+      - The app exists in Play Console.
+      - >-
+        The user has decided whether Google generates the app signing key or they upload one
+        they already own.
+    steps:
+      - instruction: >-
+          Explain the choice before touching anything. With Play App Signing, Google holds
+          the app signing key and Agentship's upload keystore only signs uploads — losing the
+          upload key is then recoverable. Without it, the upload keystore *is* the app's
+          identity and losing it means the listing can never be updated again.
+      - instruction: >-
+          Enrol the app, letting Google generate the app signing key unless the user has a
+          specific reason to export an existing one.
+        caution: >-
+          Enrolment cannot be undone, and for an app already published outside Play the
+          existing key must be uploaded rather than replaced.
+      - instruction: >-
+          Register the certificate of the upload keystore Agentship signs with, so Play accepts
+          its uploads.
+        fields:
+          - name: keystoreCertificate
+            label: Upload key certificate
+            source: build.android.keystore
+            rationale: >-
+              Export the certificate of the keystore named in the manifest under
+              build.android.keystore and upload it here. Agentship does not interpolate the
+              keystore path: anything whose name suggests a key is unreachable from a
+              console template by design.
+    verify:
+      kind: manual
+      summary: The App signing page shows the app as enrolled with both certificates listed.
+      checklist:
+        - App signing shows an app signing key certificate.
+        - It shows the upload key certificate matching the keystore Agentship uses.
+        - An upload of a bundle signed with that keystore is accepted.
+    lastVerified: '2026-08-03'

@@ -1,0 +1,7 @@
+{
+  "data": {
+    "type": "appAvailabilities",
+    "id": "avail-1",
+    "attributes": { "availableInNewTerritories": true }
+  }
+}

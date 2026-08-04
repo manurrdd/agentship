@@ -1,0 +1,52 @@
+# The Data Safety CSV, as a versioned format description.
+#
+# `gpc data-safety update --file <csv>` sends the file's bytes straight to the Play
+# `applications.dataSafety` endpoint as `safetyLabels` — verified by reading the pinned
+# gpc 0.9.93 binary, which neither parses nor validates the document. Producing something
+# Play accepts is therefore entirely Agentship's responsibility, which is why the format lives
+# here as data with its own date rather than as string concatenation inside a function.
+#
+# The same endpoint is write-only: gpc's `data-safety get` and `export` both refuse with
+# "the Google Play Developer API does not provide a GET endpoint for data safety
+# declarations". Nothing can read the live declaration back, so convergence is decided
+# against the copy Agentship archives in `.agentship/state/` after each apply, and the Google
+# snapshot reports `dataSafety` as a gap.
+#
+# CONFIDENCE: the column set below follows Google's published description of the Data safety
+# CSV import/export. It has NOT been diffed against a CSV exported from a live Play Console,
+# because no such export was available. Before the first real use, export the form from
+# Play Console, compare the header with `columns` here, and update this file and its
+# `lastVerified`.
+schemaVersion: 1
+lastVerified: '2026-08-03'
+source: https://support.google.com/googleplay/android-developer/answer/10787469
+verifiedAgainst: documentation
+columns:
+  - name: data_type
+    description: Play data type, written exactly as the console spells it.
+    required: true
+  - name: data_category
+    description: The category the data type belongs to.
+    required: true
+  - name: collected
+    description: Whether the app collects this data type.
+    values: ['true', 'false']
+    required: true
+  - name: shared
+    description: Whether the data is shared with third parties.
+    values: ['true', 'false']
+    required: true
+  - name: ephemeral
+    description: Whether the data is processed in memory and never stored.
+    values: ['true', 'false']
+    required: true
+  - name: required
+    description: Whether collection is required to use the app, rather than optional.
+    values: ['true', 'false']
+    required: true
+  - name: purposes
+    description: Semicolon-separated Play purposes for collection.
+    required: true
+  - name: sharing_purposes
+    description: Semicolon-separated Play purposes for sharing; empty when nothing is shared.
+    required: false

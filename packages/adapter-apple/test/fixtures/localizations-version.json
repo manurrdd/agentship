@@ -1,0 +1,26 @@
+{
+  "data": [
+    {
+      "type": "appStoreVersionLocalizations",
+      "id": "loc-en",
+      "attributes": {
+        "locale": "en-US",
+        "description": "The old description.",
+        "keywords": "ship,publish,store",
+        "whatsNew": "Bug fixes.",
+        "promotionalText": "Ship faster.",
+        "supportUrl": "https://agentship.dev/support",
+        "marketingUrl": "https://agentship.dev"
+      }
+    },
+    {
+      "type": "appStoreVersionLocalizations",
+      "id": "loc-es",
+      "attributes": {
+        "locale": "es-ES",
+        "description": "La descripcion antigua.",
+        "whatsNew": "Correcciones."
+      }
+    }
+  ]
+}

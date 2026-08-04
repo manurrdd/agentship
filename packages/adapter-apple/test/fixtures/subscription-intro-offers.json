@@ -1,0 +1,9 @@
+{
+  "data": [
+    {
+      "type": "subscriptionIntroductoryOffers",
+      "id": "intro-1",
+      "attributes": { "duration": "ONE_MONTH", "offerMode": "FREE_TRIAL", "numberOfPeriods": 1 }
+    }
+  ]
+}

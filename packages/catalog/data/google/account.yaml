@@ -1,0 +1,84 @@
+schemaVersion: 1
+store: google
+entries:
+  - id: google:account-and-payments
+    class: human_only
+    category: account
+    title: Complete the developer account, identity verification and payments profile
+    reason: >-
+      The one-time registration fee, identity verification and the payments profile are
+      handled in Play Console by the account owner. Google exposes no API for any of them.
+    humanReason: >-
+      It costs money, it requires government identity documents (and, for an organisation, a
+      D-U-N-S number and a verified phone number), and it creates a payments profile tied to
+      one named person. An agent must never handle identity documents or bank details.
+    console:
+      url: https://play.google.com/console/developers
+      path: [Settings, Developer account]
+    preconditions:
+      - The user has a Google account they are willing to own the developer account with.
+    steps:
+      - instruction: >-
+          Ask the user to register a Google Play developer account themselves and pay the
+          one-time 25 USD registration fee. Never ask for the password or a verification
+          code.
+      - instruction: >-
+          They complete identity verification. Google asks an individual for a government ID
+          and an organisation for its D-U-N-S number and legal details.
+        caution: >-
+          The account type (personal or organisation) determines what shows on the store
+          listing and cannot be changed later without support.
+      - instruction: >-
+          If the app will ever charge money, they also create a payments profile under
+          Setup → Payments profile. Without it, in-app products cannot be sold.
+    verify:
+      kind: manual
+      summary: Play Console shows the developer account as verified and able to create apps.
+      checklist:
+        - The Developer account page shows identity verification as complete.
+        - The All apps page offers Create app rather than a verification prompt.
+        - If the app monetises, a payments profile exists and is active.
+    lastVerified: '2026-08-03'
+
+  - id: google:closed-testing-requirement
+    class: human_only
+    category: account
+    title: Run the closed test a new personal account needs before production
+    reason: >-
+      Google requires a personal developer account created after 13 November 2023 to run a
+      closed test with at least 12 testers who opted in, continuously for 14 days, and then
+      to apply for production access. It is an account-level policy gate with no API.
+    humanReason: >-
+      It is a waiting period and an application Google reviews, not an operation. Nobody can
+      shorten it, and the testers have to be real people who actually opt in.
+    console:
+      url: https://play.google.com/console
+      path: ['<your app>', Testing, Closed testing]
+    preconditions:
+      - The developer account is a personal account created after 13 November 2023.
+      - The app already has a closed testing track with a release on it.
+    steps:
+      - instruction: >-
+          Tell the user about this before any timeline is promised. Fourteen continuous days
+          with twelve opted-in testers is the shortest possible path to production for this
+          account, and it starts only once the testers have joined.
+      - instruction: >-
+          They invite at least twelve testers by e-mail (or through a Google Group) and each
+          one accepts the invitation and installs the app.
+        caution: >-
+          The counter resets if the number of opted-in testers drops below twelve during the
+          fourteen days.
+      - instruction: >-
+          After the fourteen days, they apply for production access from the Dashboard and
+          wait for Google's answer.
+    verify:
+      kind: manual
+      summary: Play Console grants production access to this app.
+      checklist:
+        - Twelve or more testers show as opted in on the closed testing track.
+        - The fourteen-day counter in Play Console has completed.
+        - The application for production access has been submitted and approved.
+    notes: >-
+      Organisation accounts and personal accounts created before 13 November 2023 are not
+      subject to this. Check which one the user has before planning around it.
+    lastVerified: '2026-08-03'

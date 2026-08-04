@@ -1,0 +1,13 @@
+{
+  "name": "lumo",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "react": "18.3.1",
+    "react-native": "0.76.3",
+    "@react-native-firebase/app": "^21.0.0",
+    "@react-native-firebase/analytics": "^21.0.0",
+    "@react-native-firebase/crashlytics": "^21.0.0",
+    "react-native-google-mobile-ads": "^14.2.0"
+  }
+}

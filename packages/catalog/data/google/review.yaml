@@ -1,0 +1,75 @@
+schemaVersion: 1
+store: google
+entries:
+  - id: google:managed-publishing
+    class: agent_browser
+    category: review
+    title: Publish the staged changes in Play Console
+    reason: >-
+      With managed publishing on, Google holds every approved change until a human presses
+      Publish in Play Console. There is no API for that button — that is the whole point of
+      the setting.
+    console:
+      url: https://play.google.com/console
+      path: [Publishing overview, Publish]
+    preconditions:
+      - Managed publishing is enabled for this app.
+      - The staged changes have finished review.
+    steps:
+      - instruction: >-
+          Open Publishing overview and read the list of changes waiting to go out. It may
+          contain changes Agentship did not make.
+      - instruction: Confirm with the user that all of them should be published.
+        caution: >-
+          Publishing releases everything in the list at once. There is no way to publish a
+          subset from this screen.
+      - instruction: Press Publish.
+        fields:
+          - name: track
+            label: Track
+            value: '{{release.track}}'
+            source: manifest.release.track
+            rationale: The track the staged release targets.
+    verify:
+      kind: api
+      summary: The track shows the staged release as live.
+      check: google:track-live
+      params:
+        track: '{{release.track}}'
+    lastVerified: '2026-08-03'
+
+  - id: google:policy-rejection
+    class: agent_browser
+    category: review
+    title: Read and answer a Play policy rejection
+    reason: >-
+      Play exposes no review-status API at all. A rejection, the policy it cites and the
+      appeal form exist only in Play Console and in the e-mail Google sends.
+    console:
+      url: https://play.google.com/console
+      path: ['<your app>', Policy, 'Policy status / App content']
+    preconditions:
+      - Google has rejected a release or flagged the app for a policy issue.
+    steps:
+      - instruction: >-
+          Open Policy status and read the rejection in full: which policy it cites, which
+          version it applies to, and the deadline it gives.
+      - instruction: >-
+          Summarise it for the user. Decide with them whether to change the app, change the
+          declarations, or appeal.
+        caution: >-
+          Repeated rejections for the same policy can suspend the app or the whole developer
+          account. Do not resubmit the same content hoping for a different reviewer.
+      - instruction: >-
+          If they appeal, submit the appeal form with the wording the user approved. If they
+          fix the app, let Agentship plan the corrected release normally.
+    verify:
+      kind: manual
+      summary: Play Console no longer reports an outstanding policy issue for this app.
+      checklist:
+        - Policy status shows no open issue for the cited policy.
+        - The release that was rejected is either superseded or approved.
+    notes: >-
+      Agentship's getSubmissionStatus reports Google's review state as `inferred` at best, so
+      this operation is how the real answer is obtained.
+    lastVerified: '2026-08-03'

@@ -1,0 +1,10 @@
+{
+  "packageName": "com.agentship.demo",
+  "sku": "com.agentship.demo.pro",
+  "status": "active",
+  "purchaseType": "managedUser",
+  "defaultLanguage": "en-US",
+  "defaultPrice": { "priceMicros": "9990000", "currency": "USD" },
+  "prices": { "US": { "priceMicros": "9990000", "currency": "USD" } },
+  "listings": { "en-US": { "title": "Pro", "description": "Everything." } }
+}

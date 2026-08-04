@@ -1,0 +1,11 @@
+data_type,data_category,collected,shared,ephemeral,required,purposes,sharing_purposes
+Name,Personal info,true,false,false,true,App functionality;Account management,
+Email address,Personal info,true,false,false,true,App functionality;Account management,
+Device or other IDs,Device or other IDs,true,true,false,false,Advertising or marketing;Analytics,Advertising or marketing
+Crash logs,App info and performance,true,false,false,false,App functionality,
+Diagnostics,App info and performance,true,false,false,false,Analytics,
+Approximate location,Location,true,true,false,false,App functionality;Personalization,Advertising or marketing
+Purchase history,Financial info,true,false,false,false,App functionality,
+App interactions,App activity,true,true,false,false,Analytics,Analytics
+Photos,Photos and videos,true,false,false,false,App functionality,
+Videos,Photos and videos,true,false,false,false,App functionality,

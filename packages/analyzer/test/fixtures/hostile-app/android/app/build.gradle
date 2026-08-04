@@ -1,0 +1,7 @@
+apply plugin: "com.android.application"
+android {
+    defaultConfig {
+        // A comment containing applicationId "com.attacker.spoofed" must not be extracted.
+        applicationId "com.hostile.real"
+    }
+}

@@ -1,0 +1,7 @@
+{
+  "data": {
+    "type": "appPricePoints",
+    "id": "price-point-usd-0",
+    "attributes": { "customerPrice": "0", "proceeds": "0", "currency": "USD" }
+  }
+}

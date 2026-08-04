@@ -1,0 +1,59 @@
+schemaVersion: 1
+store: google
+entries:
+  - id: google:pricing-and-countries
+    class: agent_browser
+    category: pricing
+    title: Set the app price and the countries it is available in
+    reason: >-
+      The Play Developer API prices in-app products, not the app itself. The app price, its
+      free/paid status and its country availability are console-only.
+    console:
+      url: https://play.google.com/console
+      path: ['<your app>', Monetize, Pricing]
+    preconditions:
+      - The app exists in Play Console.
+      - If the app is paid, the payments profile is active.
+    steps:
+      - instruction: >-
+          Open Monetize → Pricing and set the app price. Show the user the proposal below and
+          let them decide before typing anything.
+        fields:
+          - name: price
+            label: Price
+            value: '{{privacy.appPrice}}'
+            source: manifest.pricing
+            rationale: Taken from the manifest's pricing section.
+            caution: >-
+              A paid app can be made free, but a free app that has been published can never
+              be made paid. Google states this in the dialog; it is permanent.
+          - name: baseCurrency
+            label: Base currency
+            value: '{{manifest.pricing.baseTerritory}}'
+            source: manifest.pricing.baseTerritory
+            rationale: The territory the manifest quotes the price in.
+      - instruction: >-
+          Open Countries / regions and select where the app is available. Adding a country
+          later is easy; removing one takes the app away from users who already installed
+          it.
+        fields:
+          - name: countries
+            label: Countries / regions
+            required: false
+            rationale: >-
+              The manifest's availability section, when it has one. With nothing declared,
+              the user chooses in the console.
+      - instruction: >-
+          Save. Play applies the price to every country using its own conversion table
+          unless prices are edited per country.
+    verify:
+      kind: manual
+      summary: The Pricing page shows the intended price and the intended countries.
+      checklist:
+        - The app shows the agreed price (or Free) with the expected base currency.
+        - The list of countries matches what the user chose.
+        - No banner reports an incomplete pricing setup.
+    notes: >-
+      Agentship's snapshot reports app pricing as a gap on Google for exactly this reason: the
+      API cannot read it back, so nothing here can be verified automatically.
+    lastVerified: '2026-08-03'

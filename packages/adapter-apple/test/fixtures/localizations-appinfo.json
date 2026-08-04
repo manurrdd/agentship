@@ -1,0 +1,14 @@
+{
+  "data": [
+    {
+      "type": "appInfoLocalizations",
+      "id": "info-en",
+      "attributes": {
+        "locale": "en-US",
+        "name": "Agentship Demo",
+        "subtitle": "Publish from your agent",
+        "privacyPolicyUrl": "https://agentship.dev/privacy"
+      }
+    }
+  ]
+}

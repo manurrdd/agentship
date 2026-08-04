@@ -1,0 +1,106 @@
+schemaVersion: 1
+store: google
+entries:
+  - id: google:content-rating
+    class: agent_browser
+    category: content_rating
+    title: Complete the IARC content rating questionnaire
+    reason: >-
+      Content ratings are issued by IARC, not by Google, through a questionnaire the
+      developer answers under their own name. There is no API, and the answers are a
+      declaration about the app's content.
+    console:
+      url: https://play.google.com/console
+      path: ['<your app>', Policy, App content, Content ratings]
+    preconditions:
+      - The app exists in Play Console.
+      - The user has decided how to answer questions about their own app's content.
+    steps:
+      - instruction: >-
+          Start the questionnaire and give the e-mail address IARC should send the
+          certificate to.
+        fields:
+          - name: category
+            label: Category
+            required: true
+            options: [Reference / News / Education, Social networking, Utility, Game, Other]
+            rationale: >-
+              IARC branches on this; the questions that follow differ per category. Only the
+              user can classify their app.
+          - name: email
+            label: E-mail address
+            required: true
+            rationale: IARC sends the rating certificate here. Ask the user for it.
+      - instruction: >-
+          Answer every question with the user. Show them each answer before submitting it —
+          an inaccurate rating is a policy violation and Google can remove the app for it.
+        caution: >-
+          Never answer these on the user's behalf. Agentship has no way to know whether an app
+          contains violence, gambling or user-generated content.
+      - instruction: Submit the questionnaire and wait for IARC to issue the ratings.
+    verify:
+      kind: api
+      summary: Play no longer reports a missing content rating for this app.
+      check: google:content-rating
+    lastVerified: '2026-08-03'
+
+  - id: google:app-content
+    class: agent_browser
+    category: privacy
+    title: Complete the App content declarations
+    reason: >-
+      Target audience, ads, news, government apps, financial features, health and the data
+      safety review are answered in Play Console. Only the Data Safety form itself has an API
+      (`applications.dataSafety`); the surrounding declarations do not.
+    console:
+      url: https://play.google.com/console
+      path: ['<your app>', Policy, App content]
+    preconditions:
+      - The app exists in Play Console.
+      - >-
+        The user has read Agentship's privacy proposal. It is derived from the SDKs and
+        permissions in the repository, not from what the app does at runtime.
+    steps:
+      - instruction: >-
+          Work through each section of App content with the user. The proposals below come
+          from the analysis; each one is a starting point they confirm or correct.
+        fields:
+          - name: privacyPolicyUrl
+            label: Privacy policy
+            value: '{{manifest.metadata.locales.en-US.privacyPolicyUrl}}'
+            source: manifest.metadata.locales
+            rationale: >-
+              Google requires a reachable privacy policy URL for every app. Play rejects a
+              URL that does not resolve.
+          - name: ads
+            label: Ads
+            value: '{{privacy.adsAnswer}}'
+            source: analysis.sdks
+            rationale: >-
+              Proposed from the advertising SDKs the analyzer found. If the app shows no ads,
+              say so — declaring ads that do not exist changes how the app is listed.
+          - name: targetAudience
+            label: Target audience and content
+            required: true
+            rationale: >-
+              Whether the app targets children changes which policies apply (Families
+              policy, ads restrictions, data safety answers). Only the user can decide it.
+            caution: >-
+              Declaring a child audience commits the app to the Families policy, including
+              restrictions on ads and on the data it may collect.
+          - name: dataSafety
+            label: Data safety
+            value: '{{privacy.summary}}'
+            source: manifest.privacy.dataPractices
+            rationale: >-
+              Agentship can apply this section through the Data Safety API once the user
+              confirms the manifest declaration; it is listed here so the console and the
+              manifest can be compared side by side.
+      - instruction: >-
+          Save every section. Play refuses a production release while any App content
+          section is incomplete.
+    verify:
+      kind: api
+      summary: Play no longer reports outstanding App content declarations.
+      check: google:app-content-done
+    lastVerified: '2026-08-03'

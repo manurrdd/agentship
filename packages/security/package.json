@@ -1,0 +1,18 @@
+{
+  "name": "@agentship/security",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "Permanent regression suite for the plan 07 security audit. No source: tests only.",
+  "dependencies": {
+    "@agentship/analyzer": "workspace:*",
+    "@agentship/catalog": "workspace:*",
+    "@agentship/core": "workspace:*",
+    "@agentship/credentials": "workspace:*",
+    "@agentship/mcp": "workspace:*",
+    "@agentship/setup": "workspace:*",
+    "@agentship/toolchain": "workspace:*",
+    "zod": "^4.1.13"
+  }
+}

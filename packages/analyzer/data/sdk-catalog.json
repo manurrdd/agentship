@@ -1,0 +1,333 @@
+{
+  "schemaVersion": 1,
+  "lastVerified": "2026-08-03",
+  "comment": "Third-party SDKs whose presence changes what a publisher must declare or configure in a store. Matching is by dependency name per ecosystem: npm (package.json), pub (pubspec.yaml), pod (Podfile / Podfile.lock) and gradle (Maven group:artifact). Matches are exact, case-insensitive; `prefix` entries match any dependency starting with the given string. `privacy` lists the data types the SDK typically causes an app to collect — a proposal for the user to confirm, never a declaration Agentship makes on their behalf.",
+  "sdks": [
+    {
+      "id": "firebase-core",
+      "name": "Firebase",
+      "categories": ["analytics"],
+      "privacy": ["identifiers", "diagnostics"],
+      "implications": [
+        "Firebase collects an installation identifier by default; both stores expect it to be declared."
+      ],
+      "match": {
+        "npm": ["firebase", "@react-native-firebase/app"],
+        "pub": ["firebase_core"],
+        "pod": ["Firebase", "FirebaseCore"],
+        "gradle": ["com.google.firebase:firebase-common", "com.google.gms:google-services"]
+      }
+    },
+    {
+      "id": "firebase-analytics",
+      "name": "Firebase Analytics",
+      "categories": ["analytics"],
+      "privacy": ["usage_data", "identifiers"],
+      "implications": [
+        "Analytics events and an advertising/app-instance identifier must be declared in App Privacy and Data Safety."
+      ],
+      "match": {
+        "npm": ["@react-native-firebase/analytics"],
+        "pub": ["firebase_analytics"],
+        "pod": ["Firebase/Analytics", "FirebaseAnalytics"],
+        "gradle": ["com.google.firebase:firebase-analytics"]
+      }
+    },
+    {
+      "id": "firebase-crashlytics",
+      "name": "Firebase Crashlytics",
+      "categories": ["crash"],
+      "privacy": ["diagnostics"],
+      "implications": ["Crash reports count as diagnostics data in both stores."],
+      "match": {
+        "npm": ["@react-native-firebase/crashlytics"],
+        "pub": ["firebase_crashlytics"],
+        "pod": ["Firebase/Crashlytics", "FirebaseCrashlytics"],
+        "gradle": ["com.google.firebase:firebase-crashlytics"]
+      }
+    },
+    {
+      "id": "firebase-messaging",
+      "name": "Firebase Cloud Messaging",
+      "categories": ["push"],
+      "privacy": ["identifiers"],
+      "implications": [
+        "Push requires an APNs key or certificate for iOS, configured in Apple's developer portal.",
+        "iOS requires the Push Notifications capability in the app's entitlements."
+      ],
+      "match": {
+        "npm": ["@react-native-firebase/messaging"],
+        "pub": ["firebase_messaging"],
+        "pod": ["Firebase/Messaging", "FirebaseMessaging"],
+        "gradle": ["com.google.firebase:firebase-messaging"]
+      }
+    },
+    {
+      "id": "firebase-auth",
+      "name": "Firebase Authentication",
+      "categories": ["auth"],
+      "privacy": ["contact_info", "identifiers"],
+      "implications": [
+        "If the app offers any third-party sign-in, Apple requires Sign in with Apple as an equivalent option."
+      ],
+      "match": {
+        "npm": ["@react-native-firebase/auth"],
+        "pub": ["firebase_auth"],
+        "pod": ["Firebase/Auth", "FirebaseAuth"],
+        "gradle": ["com.google.firebase:firebase-auth"]
+      }
+    },
+    {
+      "id": "firebase-storage",
+      "name": "Cloud Storage for Firebase",
+      "categories": ["storage"],
+      "privacy": ["user_content"],
+      "implications": [],
+      "match": {
+        "npm": ["@react-native-firebase/storage", "@react-native-firebase/firestore"],
+        "pub": ["firebase_storage", "cloud_firestore"],
+        "pod": ["Firebase/Storage", "FirebaseStorage", "FirebaseFirestore"],
+        "gradle": ["com.google.firebase:firebase-storage", "com.google.firebase:firebase-firestore"]
+      }
+    },
+    {
+      "id": "revenuecat",
+      "name": "RevenueCat",
+      "categories": ["purchases"],
+      "privacy": ["purchases", "identifiers"],
+      "implications": [
+        "In-app purchase products must exist in App Store Connect and Play Console before a build using them can be reviewed.",
+        "Paid apps require completed tax and banking agreements in both stores."
+      ],
+      "match": {
+        "npm": ["react-native-purchases", "@revenuecat/purchases-js"],
+        "pub": ["purchases_flutter"],
+        "pod": ["RevenueCat", "Purchases"],
+        "gradle": ["com.revenuecat.purchases:purchases"]
+      }
+    },
+    {
+      "id": "storekit",
+      "name": "StoreKit (Apple in-app purchases)",
+      "categories": ["purchases"],
+      "privacy": ["purchases"],
+      "implications": [
+        "Requires in-app purchase products configured in App Store Connect and the paid applications agreement signed."
+      ],
+      "match": {
+        "npm": ["react-native-iap", "expo-in-app-purchases"],
+        "pub": ["in_app_purchase", "in_app_purchase_storekit"],
+        "pod": ["StoreKit"],
+        "gradle": []
+      }
+    },
+    {
+      "id": "play-billing",
+      "name": "Google Play Billing",
+      "categories": ["purchases"],
+      "privacy": ["purchases"],
+      "implications": [
+        "Requires in-app products or subscriptions configured in Play Console, and a completed merchant account."
+      ],
+      "match": {
+        "npm": ["react-native-iap"],
+        "pub": ["in_app_purchase_android"],
+        "pod": [],
+        "gradle": ["com.android.billingclient:billing"]
+      }
+    },
+    {
+      "id": "admob",
+      "name": "Google AdMob",
+      "categories": ["ads", "tracking"],
+      "privacy": ["identifiers", "usage_data"],
+      "implications": [
+        "Apple requires App Tracking Transparency and NSUserTrackingUsageDescription when the advertising identifier is used for tracking.",
+        "Google Play requires the Advertising ID permission to be declared and the ads presence answered in Data Safety."
+      ],
+      "match": {
+        "npm": ["react-native-google-mobile-ads", "expo-ads-admob"],
+        "pub": ["google_mobile_ads"],
+        "pod": ["Google-Mobile-Ads-SDK", "GoogleMobileAds"],
+        "gradle": ["com.google.android.gms:play-services-ads"]
+      }
+    },
+    {
+      "id": "meta-sdk",
+      "name": "Meta (Facebook) SDK",
+      "categories": ["ads", "tracking", "analytics"],
+      "privacy": ["identifiers", "usage_data", "contact_info"],
+      "implications": [
+        "Attribution through the Meta SDK counts as tracking for Apple's App Tracking Transparency."
+      ],
+      "match": {
+        "npm": ["react-native-fbsdk-next"],
+        "pub": ["facebook_app_events", "flutter_facebook_auth"],
+        "pod": ["FBSDKCoreKit", "FBSDKLoginKit"],
+        "gradle": [
+          "com.facebook.android:facebook-android-sdk",
+          "com.facebook.android:facebook-core"
+        ]
+      }
+    },
+    {
+      "id": "sentry",
+      "name": "Sentry",
+      "categories": ["crash", "analytics"],
+      "privacy": ["diagnostics"],
+      "implications": ["Crash and performance data must be declared as diagnostics."],
+      "match": {
+        "npm": ["@sentry/react-native", "@sentry/browser", "@sentry/node"],
+        "pub": ["sentry_flutter"],
+        "pod": ["Sentry"],
+        "gradle": ["io.sentry:sentry-android"]
+      }
+    },
+    {
+      "id": "amplitude",
+      "name": "Amplitude",
+      "categories": ["analytics"],
+      "privacy": ["usage_data", "identifiers"],
+      "implications": [],
+      "match": {
+        "npm": ["@amplitude/analytics-react-native", "@amplitude/react-native"],
+        "pub": ["amplitude_flutter"],
+        "pod": ["Amplitude"],
+        "gradle": ["com.amplitude:analytics-android"]
+      }
+    },
+    {
+      "id": "mixpanel",
+      "name": "Mixpanel",
+      "categories": ["analytics"],
+      "privacy": ["usage_data", "identifiers"],
+      "implications": [],
+      "match": {
+        "npm": ["mixpanel-react-native"],
+        "pub": ["mixpanel_flutter"],
+        "pod": ["Mixpanel-swift", "Mixpanel"],
+        "gradle": ["com.mixpanel.android:mixpanel-android"]
+      }
+    },
+    {
+      "id": "appsflyer",
+      "name": "AppsFlyer",
+      "categories": ["tracking", "analytics"],
+      "privacy": ["identifiers", "usage_data"],
+      "implications": [
+        "Attribution SDKs require App Tracking Transparency on iOS when they access the advertising identifier."
+      ],
+      "match": {
+        "npm": ["react-native-appsflyer"],
+        "pub": ["appsflyer_sdk"],
+        "pod": ["AppsFlyerFramework"],
+        "gradle": ["com.appsflyer:af-android-sdk"]
+      }
+    },
+    {
+      "id": "adjust",
+      "name": "Adjust",
+      "categories": ["tracking", "analytics"],
+      "privacy": ["identifiers", "usage_data"],
+      "implications": [
+        "Attribution SDKs require App Tracking Transparency on iOS when they access the advertising identifier."
+      ],
+      "match": {
+        "npm": ["react-native-adjust"],
+        "pub": ["adjust_sdk"],
+        "pod": ["Adjust"],
+        "gradle": ["com.adjust.sdk:adjust-android"]
+      }
+    },
+    {
+      "id": "onesignal",
+      "name": "OneSignal",
+      "categories": ["push"],
+      "privacy": ["identifiers"],
+      "implications": ["Push requires an APNs key for iOS and the Push Notifications entitlement."],
+      "match": {
+        "npm": ["react-native-onesignal", "onesignal-expo-plugin"],
+        "pub": ["onesignal_flutter"],
+        "pod": ["OneSignal", "OneSignalXCFramework"],
+        "gradle": ["com.onesignal:OneSignal"]
+      }
+    },
+    {
+      "id": "segment",
+      "name": "Segment",
+      "categories": ["analytics"],
+      "privacy": ["usage_data", "identifiers"],
+      "implications": [],
+      "match": {
+        "npm": ["@segment/analytics-react-native"],
+        "pub": ["segment_analytics_flutter"],
+        "pod": ["Analytics", "Segment"],
+        "gradle": ["com.segment.analytics.android:analytics"]
+      }
+    },
+    {
+      "id": "branch",
+      "name": "Branch",
+      "categories": ["tracking"],
+      "privacy": ["identifiers", "usage_data"],
+      "implications": ["Deep-link attribution counts as tracking for Apple."],
+      "match": {
+        "npm": ["react-native-branch"],
+        "pub": ["flutter_branch_sdk"],
+        "pod": ["Branch"],
+        "gradle": ["io.branch.sdk.android:library"]
+      }
+    },
+    {
+      "id": "intercom",
+      "name": "Intercom",
+      "categories": ["support"],
+      "privacy": ["contact_info", "user_content"],
+      "implications": [],
+      "match": {
+        "npm": ["@intercom/intercom-react-native"],
+        "pub": ["intercom_flutter"],
+        "pod": ["Intercom"],
+        "gradle": ["io.intercom.android:intercom-sdk"]
+      }
+    },
+    {
+      "id": "google-maps",
+      "name": "Google Maps",
+      "categories": ["maps"],
+      "privacy": ["location"],
+      "implications": [
+        "Map SDKs usually imply location access, which requires purpose strings on iOS and a privacy answer on both stores."
+      ],
+      "match": {
+        "npm": ["react-native-maps"],
+        "pub": ["google_maps_flutter"],
+        "pod": ["GoogleMaps"],
+        "gradle": ["com.google.android.gms:play-services-maps"]
+      }
+    },
+    {
+      "id": "expo-notifications",
+      "name": "Expo Notifications",
+      "categories": ["push"],
+      "privacy": ["identifiers"],
+      "implications": ["Push requires an APNs key for iOS and an FCM server key for Android."],
+      "match": {
+        "npm": ["expo-notifications"],
+        "pub": [],
+        "pod": [],
+        "gradle": []
+      }
+    },
+    {
+      "id": "expo-updates",
+      "name": "Expo Updates (OTA)",
+      "categories": ["other"],
+      "privacy": ["diagnostics"],
+      "implications": [
+        "Over-the-air updates must not change the app's behaviour beyond what the reviewed binary does; both stores restrict this."
+      ],
+      "match": { "npm": ["expo-updates"], "pub": [], "pod": [], "gradle": [] }
+    }
+  ]
+}

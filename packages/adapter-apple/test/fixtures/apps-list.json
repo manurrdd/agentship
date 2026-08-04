@@ -1,0 +1,31 @@
+{
+  "data": [
+    {
+      "type": "apps",
+      "id": "1234567890",
+      "attributes": {
+        "name": "Agentship Demo",
+        "bundleId": "com.agentship.demo",
+        "sku": "AGENTSHIPDEMO",
+        "primaryLocale": "en-US",
+        "contentRightsDeclaration": "DOES_NOT_USE_THIRD_PARTY_CONTENT"
+      },
+      "relationships": {
+        "appStoreVersions": { "links": { "related": "https://api.appstoreconnect.apple.com/v1/apps/1234567890/appStoreVersions" } }
+      },
+      "links": { "self": "https://api.appstoreconnect.apple.com/v1/apps/1234567890" }
+    },
+    {
+      "type": "apps",
+      "id": "9876543210",
+      "attributes": {
+        "name": "Agentship Second",
+        "bundleId": "com.agentship.second",
+        "sku": "AGENTSHIPSECOND",
+        "primaryLocale": "es-ES"
+      }
+    }
+  ],
+  "links": { "self": "https://api.appstoreconnect.apple.com/v1/apps" },
+  "meta": { "paging": { "total": 2, "limit": 50 } }
+}

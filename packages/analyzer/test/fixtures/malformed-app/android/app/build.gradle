@@ -1,0 +1,10 @@
+apply plugin: "com.android.application"
+android {
+    defaultConfig {
+        applicationId = whateverVariable
+        versionCode = project.property("code")
+    }
+    // unbalanced brace below
+    buildTypes {
+        release {
+}

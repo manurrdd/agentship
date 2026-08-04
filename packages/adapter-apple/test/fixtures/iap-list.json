@@ -1,0 +1,9 @@
+{
+  "data": [
+    {
+      "type": "inAppPurchases",
+      "id": "iap-1",
+      "attributes": { "name": "Pro Lifetime", "productId": "com.agentship.demo.pro", "inAppPurchaseType": "NON_CONSUMABLE", "state": "APPROVED" }
+    }
+  ]
+}

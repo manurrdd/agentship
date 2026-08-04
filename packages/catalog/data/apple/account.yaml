@@ -1,0 +1,124 @@
+schemaVersion: 1
+store: apple
+entries:
+  - id: apple:developer-enrollment
+    class: human_only
+    category: account
+    title: Enrol in the Apple Developer Program
+    reason: >-
+      Enrolment is a paid legal agreement between Apple and a verified individual or
+      organisation. There is no API for it, and Apple verifies identity out of band
+      (D-U-N-S number for an organisation, government ID for an individual).
+    humanReason: >-
+      It costs money, it binds the user legally, and it requires their Apple Account with
+      two-factor authentication. No agent may sign a contract or handle someone's identity
+      documents.
+    console:
+      url: https://developer.apple.com/programs/enroll/
+      path: [Account, Enroll]
+    preconditions:
+      - The user has an Apple Account with two-factor authentication enabled.
+      - >-
+        For an organisation, the legal entity name, D-U-N-S number and the enroller's legal
+        authority to bind it are all needed before starting.
+    steps:
+      - instruction: >-
+          Ask the user to open the enrolment page themselves and sign in with their own
+          Apple Account. Do not offer to do this for them and never ask for the password or
+          the two-factor code.
+      - instruction: >-
+          They choose Individual or Organization, complete Apple's identity checks and pay
+          the annual membership fee.
+        caution: >-
+          The entity type cannot be changed afterwards without Apple support; an
+          organisation account is required to publish under a company name.
+      - instruction: >-
+          Wait for Apple to confirm the membership by e-mail. Verification for an
+          organisation routinely takes several working days.
+    verify:
+      kind: manual
+      summary: The Apple Developer account page shows an active membership.
+      checklist:
+        - The Membership section shows a status of Active with an expiry date in the future.
+        - App Store Connect is reachable at https://appstoreconnect.apple.com with that account.
+    notes: >-
+      Nothing else in a first release can proceed until this is done, so raise it before
+      anything else rather than discovering it at submission time.
+    lastVerified: '2026-08-03'
+
+  - id: apple:agreements-tax-banking
+    class: human_only
+    category: agreements
+    title: Accept agreements and complete tax and banking details
+    reason: >-
+      Apple requires the Account Holder to accept the Paid Applications agreement and to
+      supply tax and banking information in person. None of it is exposed by the App Store
+      Connect API.
+    humanReason: >-
+      These are legal acceptances and financial identity details tied to one named person.
+      An agent must never accept an agreement on someone's behalf, and must never see or
+      type a bank account, a tax identifier or an identity document.
+    console:
+      url: https://appstoreconnect.apple.com/agreements
+      path: [Business, 'Agreements, Tax, and Banking']
+    preconditions:
+      - The Apple Developer Program membership is active.
+      - The person doing this is the Account Holder; no other role can accept agreements.
+    steps:
+      - instruction: >-
+          Ask the user to open Agreements, Tax, and Banking and accept the Free Applications
+          agreement. Every app needs it, including a free one.
+      - instruction: >-
+          If the app will ever charge money — a paid app, an in-app purchase or a
+          subscription — they also accept the Paid Applications agreement and complete the
+          tax forms and bank details it asks for.
+        caution: >-
+          Without an active Paid Applications agreement, in-app purchases cannot be
+          submitted and a paid app cannot be sold, however complete the rest of the release
+          is.
+    verify:
+      kind: manual
+      summary: The agreements page shows the needed agreements as active, with no pending action.
+      checklist:
+        - The Free Applications agreement shows as Active.
+        - If the app monetises, the Paid Applications agreement shows as Active.
+        - No row shows an outstanding action for tax forms or banking.
+    lastVerified: '2026-08-03'
+
+  - id: apple:api-key
+    class: human_only
+    category: credentials
+    title: Create the App Store Connect API key
+    reason: >-
+      API keys are issued in App Store Connect by a user with the Admin or Account Holder
+      role. There is no API that creates an API key — that would be a bootstrap Apple does
+      not offer.
+    humanReason: >-
+      Creating the key requires a signed-in App Store Connect session with two-factor
+      authentication, and the download hands over a private key. Agentship stores that key
+      through agentship_configure_auth and never sees the console session.
+    console:
+      url: https://appstoreconnect.apple.com/access/integrations/api
+      path: [Users and Access, Integrations, App Store Connect API]
+    preconditions:
+      - The user signing in holds the Admin or Account Holder role.
+    steps:
+      - instruction: >-
+          Ask the user to generate a new Team key with the App Manager role (Admin also
+          works, and grants more than Agentship needs).
+      - instruction: >-
+          They download the .p8 file, and note the Key ID and the Issuer ID shown on the
+          same page.
+        caution: >-
+          Apple allows the .p8 file to be downloaded exactly once. If it is lost, the key
+          must be revoked and a new one created.
+      - instruction: >-
+          Relay the values into Agentship with agentship_configure_auth. Never ask the user to
+          paste a key into the conversation, a file in the repository or a commit.
+    verify:
+      kind: manual
+      summary: Agentship accepts the credentials and App Store Connect answers with them.
+      checklist:
+        - agentship_configure_auth stored the key without an error.
+        - agentship_setup_status reports the Apple credentials as present and working.
+    lastVerified: '2026-08-03'

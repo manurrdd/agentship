@@ -1,0 +1,13 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'com.acme.lumo'
+    defaultConfig {
+        applicationId "com.acme.lumo"
+        versionCode 1
+        versionName "1.0.0"
+    }
+}
+dependencies {
+    implementation 'com.google.firebase:firebase-analytics:22.1.0'
+    implementation 'com.google.android.gms:play-services-ads:23.4.0'
+}

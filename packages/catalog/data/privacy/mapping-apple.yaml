@@ -1,0 +1,67 @@
+# Apple App Privacy taxonomy, as data.
+#
+# Apple's categories and purposes are its own vocabulary; Agentship keeps a neutral model in
+# the manifest and projects it here. Where Apple has no equivalent the entry says so
+# (`unmapped: true`) rather than inventing the nearest-looking answer — an approximate
+# privacy label is a wrong legal declaration, not a rounding error.
+schemaVersion: 1
+store: apple
+lastVerified: '2026-08-03'
+source: https://developer.apple.com/app-store/app-privacy-details/
+purposes:
+  app_functionality: App Functionality
+  analytics: Analytics
+  advertising: Third-Party Advertising
+  personalization: Product Personalization
+  developer_communications: Developer's Advertising or Marketing
+  # Apple folds fraud prevention and account management into App Functionality; its
+  # questionnaire has no separate answer for either.
+  fraud_prevention: App Functionality
+  account_management: App Functionality
+  other: Other Purposes
+dataTypes:
+  contact_info:
+    category: Contact Info
+    types: [Name, Email Address]
+  identifiers:
+    category: Identifiers
+    types: [User ID, Device ID]
+  usage_data:
+    category: Usage Data
+    types: [Product Interaction]
+  diagnostics:
+    category: Diagnostics
+    types: [Crash Data, Performance Data]
+  purchases:
+    category: Purchases
+    types: [Purchase History]
+  location:
+    category: Location
+    types: [Coarse Location]
+    note: >-
+      Agentship proposes Coarse Location because a permission string cannot say which one the
+      app really uses. If the app requests precise location, change it to Precise Location.
+  user_content:
+    category: User Content
+    types: [Photos or Videos, Audio Data, Other User Content]
+  contacts:
+    category: Contacts
+    types: [Contacts]
+  search_history:
+    category: Search History
+    types: [Search History]
+  browsing_history:
+    category: Browsing History
+    types: [Browsing History]
+  financial_info:
+    category: Financial Info
+    types: [Payment Info, Other Financial Info]
+  health:
+    category: Health & Fitness
+    types: [Health, Fitness]
+  sensitive_info:
+    category: Sensitive Info
+    types: [Sensitive Info]
+  other:
+    category: Other Data
+    types: [Other Data Types]

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "lastVerified": "2026-08-03",
+  "comment": "Google Play platform requirements that are pure data and change on a published schedule. Agentship warns when a project no longer meets the highest requirement whose effectiveFrom date has passed. This table must be revised every release: an entry is only added once Google has announced the level and its date, never extrapolated.",
+  "targetSdkRequirements": [
+    {
+      "apiLevel": 33,
+      "androidVersion": "13",
+      "effectiveFrom": "2023-08-31",
+      "appliesTo": "new apps and updates"
+    },
+    {
+      "apiLevel": 34,
+      "androidVersion": "14",
+      "effectiveFrom": "2024-08-31",
+      "appliesTo": "new apps and updates"
+    },
+    {
+      "apiLevel": 35,
+      "androidVersion": "15",
+      "effectiveFrom": "2025-08-31",
+      "appliesTo": "new apps and updates"
+    }
+  ],
+  "notes": [
+    "Existing apps that are not updated keep working; the requirement applies when submitting a new app or an update.",
+    "Wear OS, Android TV and Automotive follow their own schedules, which this table does not cover."
+  ]
+}

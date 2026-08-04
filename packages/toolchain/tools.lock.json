@@ -1,0 +1,68 @@
+{
+  "$schema": "./tools.lock.schema.json",
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-03T13:30:21.768Z",
+  "platforms": ["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64"],
+  "tools": {
+    "asc": {
+      "version": "3.4.1",
+      "tag": "3.4.1",
+      "repo": "rorkai/App-Store-Connect-CLI",
+      "license": "MIT",
+      "description": "App Store Connect CLI",
+      "checksumsUrl": "https://github.com/rorkai/App-Store-Connect-CLI/releases/download/3.4.1/asc_3.4.1_checksums.txt",
+      "platforms": {
+        "darwin-arm64": {
+          "url": "https://github.com/rorkai/App-Store-Connect-CLI/releases/download/3.4.1/asc_3.4.1_macOS_arm64",
+          "sha256": "88381683964945c0e2c74b65500725edf463a3c65725a21be2324ef1c4742a2d",
+          "size": 35895280
+        },
+        "darwin-x64": {
+          "url": "https://github.com/rorkai/App-Store-Connect-CLI/releases/download/3.4.1/asc_3.4.1_macOS_amd64",
+          "sha256": "b6cf30fb2e2274031d7573712fde3543c76eeffdd1be2c2dd5636fcea9b3a486",
+          "size": 40023248
+        },
+        "linux-x64": {
+          "url": "https://github.com/rorkai/App-Store-Connect-CLI/releases/download/3.4.1/asc_3.4.1_linux_amd64",
+          "sha256": "73783179889218a0c9203f285756ff80b6877ea70e3b8e9ad7aef80638068cbe",
+          "size": 38637730
+        },
+        "linux-arm64": {
+          "url": "https://github.com/rorkai/App-Store-Connect-CLI/releases/download/3.4.1/asc_3.4.1_linux_arm64",
+          "sha256": "40559abcd09f8ca6d11b221295963efa8b2796a6f9a18ad8beb1f4304b6e0799",
+          "size": 35651746
+        }
+      }
+    },
+    "gpc": {
+      "version": "0.9.93",
+      "tag": "v0.9.93",
+      "repo": "yasserstudio/gpc",
+      "license": "MIT",
+      "description": "Google Play Console CLI",
+      "checksumsUrl": "https://github.com/yasserstudio/gpc/releases/download/v0.9.93/checksums.txt",
+      "platforms": {
+        "darwin-arm64": {
+          "url": "https://github.com/yasserstudio/gpc/releases/download/v0.9.93/gpc-darwin-arm64",
+          "sha256": "effb8224d42dec081ffe695a09d8f0fb2dd66ded6ccaf8bc0b8bde7f1ea04e2f",
+          "size": 66748514
+        },
+        "darwin-x64": {
+          "url": "https://github.com/yasserstudio/gpc/releases/download/v0.9.93/gpc-darwin-x64",
+          "sha256": "585e45a1890a58149f7239fc94c26b7a95b8183ac3aa7f5039a34572668ec070",
+          "size": 72450128
+        },
+        "linux-x64": {
+          "url": "https://github.com/yasserstudio/gpc/releases/download/v0.9.93/gpc-linux-x64",
+          "sha256": "398d8401c10ed7a0b450d27e8358303020181bd7e156bbfea0a1dfd4bb9dcf77",
+          "size": 97859712
+        },
+        "linux-arm64": {
+          "url": "https://github.com/yasserstudio/gpc/releases/download/v0.9.93/gpc-linux-arm64",
+          "sha256": "de635bd4bc56b5717abe9ebbc1e4fd69da5ed02854da9dffe888e8202b0a29a2",
+          "size": 96970896
+        }
+      }
+    }
+  }
+}

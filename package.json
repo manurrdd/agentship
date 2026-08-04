@@ -1,0 +1,37 @@
+{
+  "name": "agentship-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.32.1",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc --build && pnpm -r --sequential build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "e2e:mock": "vitest run --config vitest.e2e.config.ts",
+    "typecheck": "tsc --build --force",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "analyze": "tsx --conditions agentship-source packages/analyzer/src/dev-cli.ts",
+    "capabilities": "tsx --conditions agentship-source scripts/dump-capabilities.ts",
+    "update-tools-lock": "tsx scripts/update-tools-lock.ts",
+    "clean": "rm -rf packages/*/dist packages/*/*.tsbuildinfo",
+    "changeset": "changeset",
+    "changeset:version": "changeset version",
+    "check:docs": "tsx --conditions agentship-source scripts/check-docs.ts",
+    "generate:platform-limits": "tsx --conditions agentship-source scripts/generate-platform-limits.ts",
+    "generate:skill-references": "tsx --conditions agentship-source scripts/generate-skill-references.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.14",
+    "@changesets/cli": "^2.31.1",
+    "@types/node": "^22.10.2",
+    "tsup": "^8.5.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

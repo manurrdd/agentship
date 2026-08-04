@@ -1,0 +1,5 @@
+platform :ios, '15.1'
+target 'AcmeChat' do
+  pod 'FirebaseMessaging'
+  pod 'Sentry'
+end

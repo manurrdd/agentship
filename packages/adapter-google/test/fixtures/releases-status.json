@@ -1,0 +1,21 @@
+[
+  {
+    "track": "production",
+    "status": "inProgress",
+    "name": "1.4.0 (1042)",
+    "versionCodes": ["1042"],
+    "userFraction": 0.2,
+    "releaseNotes": [{ "language": "en-US", "text": "Bug fixes and improvements." }]
+  },
+  {
+    "track": "internal",
+    "status": "completed",
+    "name": "1.4.1 (1043)",
+    "versionCodes": ["1043"]
+  },
+  {
+    "track": "alpha",
+    "status": "draft",
+    "versionCodes": ["1044"]
+  }
+]

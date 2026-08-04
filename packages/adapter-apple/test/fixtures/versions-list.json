@@ -1,0 +1,36 @@
+{
+  "data": [
+    {
+      "type": "appStoreVersions",
+      "id": "ver-draft-1",
+      "attributes": {
+        "platform": "IOS",
+        "versionString": "1.4.0",
+        "appStoreState": "PREPARE_FOR_SUBMISSION",
+        "appVersionState": "PREPARE_FOR_SUBMISSION",
+        "copyright": "2026 Agentship",
+        "releaseType": "AFTER_APPROVAL",
+        "createdDate": "2026-07-30T09:12:00-07:00"
+      },
+      "relationships": {
+        "build": { "data": null }
+      }
+    },
+    {
+      "type": "appStoreVersions",
+      "id": "ver-live-1",
+      "attributes": {
+        "platform": "IOS",
+        "versionString": "1.3.2",
+        "appStoreState": "READY_FOR_SALE",
+        "appVersionState": "READY_FOR_DISTRIBUTION",
+        "releaseType": "MANUAL",
+        "createdDate": "2026-06-02T11:00:00-07:00"
+      },
+      "relationships": {
+        "build": { "data": { "type": "builds", "id": "build-1041" } }
+      }
+    }
+  ],
+  "links": { "self": "https://api.appstoreconnect.apple.com/v1/apps/1234567890/appStoreVersions" }
+}

@@ -1,0 +1,70 @@
+export {
+  AGENT_IDS,
+  type AgentDetection,
+  type AgentId,
+  type AgentIntegration,
+  agentIntegration,
+  agentIntegrations,
+  detectAgents,
+  MCP_SERVER_NAME,
+  type McpRegistration,
+  type RegistrationCheck,
+  type RegistrationMethod,
+  type UnregisterResult,
+} from './agents.js';
+export {
+  type CheckStatus,
+  type DoctorCheck,
+  type DoctorOptions,
+  type DoctorReport,
+  runDoctor,
+} from './doctor.js';
+export { type CliResult, defaultEnv, type IntegrationEnv, whichOnPath } from './env.js';
+export {
+  type AgentSetupResult,
+  assertRequirements,
+  runSetup,
+  runUninstall,
+  runUpdate,
+  type SetupOptions,
+  type SetupReport,
+  type UninstallOptions,
+  type UninstallPlanItem,
+  type UninstallReport,
+  type UpdateResult,
+} from './install.js';
+export {
+  type AgentRecord,
+  forgetIntegration,
+  INTEGRATIONS_VERSION,
+  type IntegrationsFile,
+  IntegrationsFileSchema,
+  integrationsPath,
+  readIntegrations,
+  recordIntegration,
+  writeIntegrations,
+} from './registry.js';
+export {
+  BACKUP_SUFFIX,
+  type ConfigEdit,
+  type ConfigFormat,
+  editJsonConfig,
+  editTomlConfig,
+} from './safe-edit.js';
+export {
+  hashSkillDir,
+  type InstalledSkill,
+  installSkill,
+  parseSkillFrontmatter,
+  readSkillSources,
+  removeSkill,
+  type SkillFile,
+  type SkillFrontmatter,
+  type SkillRemoval,
+  type SkillSource,
+  type SkillState,
+  type SkillValidation,
+  skillBody,
+  skillState,
+  validateSkill,
+} from './skills.js';

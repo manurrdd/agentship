@@ -1,0 +1,74 @@
+# Google Play Data Safety taxonomy, as data.
+#
+# Play splits data into a category and a type inside it, and asks separately whether data is
+# collected, shared, processed ephemerally and optional. The neutral model carries collection
+# and sharing; the rest is asked of the user, never assumed.
+schemaVersion: 1
+store: google
+lastVerified: '2026-08-03'
+source: https://support.google.com/googleplay/android-developer/answer/10787469
+purposes:
+  app_functionality: App functionality
+  analytics: Analytics
+  advertising: Advertising or marketing
+  personalization: Personalization
+  developer_communications: Developer communications
+  fraud_prevention: Fraud prevention, security, and compliance
+  account_management: Account management
+  # Play's form has no "other purposes" answer. Saying so is the point: a practice whose
+  # only purpose is "other" comes back as a question rather than as a silent App functionality.
+  other:
+    unmapped: true
+    reason: >-
+      Play's Data safety form has no "other purposes" answer. Say what the data is actually
+      used for, or the declaration cannot be generated.
+dataTypes:
+  contact_info:
+    category: Personal info
+    types: [Name, Email address]
+  identifiers:
+    category: Device or other IDs
+    types: [Device or other IDs]
+  usage_data:
+    category: App activity
+    types: [App interactions]
+  diagnostics:
+    category: App info and performance
+    types: [Crash logs, Diagnostics]
+  purchases:
+    category: Financial info
+    types: [Purchase history]
+  location:
+    category: Location
+    types: [Approximate location]
+    note: >-
+      Agentship proposes Approximate location; a permission string cannot say which one the app
+      really uses. If the app requests ACCESS_FINE_LOCATION for its own purposes, change it
+      to Precise location.
+  user_content:
+    category: Photos and videos
+    types: [Photos, Videos]
+  contacts:
+    category: Contacts
+    types: [Contacts]
+  search_history:
+    category: App activity
+    types: [In-app search history]
+  browsing_history:
+    category: Web browsing
+    types: [Web browsing history]
+  financial_info:
+    category: Financial info
+    types: [User payment info, Other financial info]
+  health:
+    category: Health and fitness
+    types: [Health info, Fitness info]
+  sensitive_info:
+    category: Personal info
+    types: [Other info]
+    note: >-
+      Play has no single "sensitive info" bucket; it asks about race, beliefs and sexual
+      orientation separately. Confirm which one applies rather than accepting Other info.
+  other:
+    category: App activity
+    types: [Other actions]

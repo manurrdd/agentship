@@ -1,0 +1,117 @@
+schemaVersion: 1
+store: apple
+entries:
+  - id: apple:create-app-record
+    class: agent_browser
+    category: app_record
+    title: Create the app record in App Store Connect
+    reason: >-
+      The App Store Connect API manages apps that already exist; it has no endpoint that
+      creates one. The app record, its bundle ID and its SKU are created in the console.
+    console:
+      url: https://appstoreconnect.apple.com/apps
+      path: [Apps, +, New App]
+    preconditions:
+      - The Apple Developer Program membership is active and the agreements are accepted.
+      - >-
+        The bundle identifier already exists as an App ID in the Apple Developer portal
+        (Certificates, Identifiers & Profiles → Identifiers). The New App dialog only
+        offers identifiers that are already registered.
+    steps:
+      - instruction: >-
+          Open Apps and press the + button, then New App. Fill the dialog with the values
+          below, showing them to the user first — every one of them is a decision, not a
+          fact Agentship may make on their behalf.
+        fields:
+          - name: platforms
+            label: Platforms
+            value: iOS
+            source: manifest.stores.apple
+            rationale: Agentship publishes the iOS platform of this app.
+            options: [iOS, macOS, tvOS, visionOS]
+          - name: name
+            label: Name
+            value: '{{manifest.app.name}}'
+            source: manifest.app.name
+            rationale: The store-visible name declared in the manifest.
+            caution: >-
+              App names are unique across the whole App Store. If this one is taken, the
+              user picks another before the record can be created.
+          - name: primaryLanguage
+            label: Primary Language
+            value: '{{manifest.metadata.primaryLocale}}'
+            source: manifest.metadata.primaryLocale
+            rationale: The locale the manifest treats as the primary listing.
+          - name: bundleId
+            label: Bundle ID
+            value: '{{manifest.stores.apple.bundleId}}'
+            source: manifest.stores.apple.bundleId
+            rationale: Read from the project, so it matches what the build will be signed with.
+            caution: The bundle ID of an app record can never be changed afterwards.
+          - name: sku
+            label: SKU
+            source: manifest.stores.apple.bundleId
+            rationale: >-
+              An internal identifier never shown to customers. A common convention is the
+              bundle ID with dots replaced by dashes; the user decides.
+      - instruction: >-
+          After the record exists, copy the Apple ID that App Store Connect assigns (a
+          numeric app id, shown under App Information) and write it into
+          .agentship/agentship.yaml as {{field:appId}}. Nothing that talks to Apple works until
+          it is there.
+        fields:
+          - name: appId
+            label: stores.apple.appId
+            required: true
+            rationale: >-
+              Apple assigns it; Agentship cannot guess it. It is the id every later App Store
+              Connect call addresses.
+    verify:
+      kind: api
+      summary: Agentship reads the app back from App Store Connect with this bundle ID.
+      check: apple:app-exists
+      params:
+        bundleId: '{{manifest.stores.apple.bundleId}}'
+    lastVerified: '2026-08-03'
+
+  - id: apple:app-transfer
+    class: agent_browser
+    category: other
+    title: Transfer the app to another App Store Connect account
+    reason: >-
+      App transfers are initiated and accepted in the console. The public API exposes no
+      transfer resource, and the operation moves an app — with its users, reviews and
+      subscriptions — between two legal entities.
+    console:
+      url: https://appstoreconnect.apple.com/apps
+      path: [Apps, '<your app>', App Information, Additional Information, Transfer App]
+    preconditions:
+      - Both accounts have accepted the agreements the app needs.
+      - The app has at least one version that has been released, and no version in review.
+      - >-
+        The app does not use a Bundle ID with an associated Apple Pay merchant ID, App
+        Clips, or a Sign in with Apple primary App ID — Apple blocks transfers for several
+        such configurations and names the blocker in the dialog.
+    steps:
+      - instruction: >-
+          Confirm with the user, in plain words, that they want to hand this app to another
+          account. Do not start a transfer that was not asked for explicitly.
+        caution: >-
+          A transfer cannot be undone from Agentship. Reversing it means the receiving account
+          initiating a new transfer back.
+      - instruction: >-
+          Open App Information, choose Transfer App, and supply the recipient's Apple ID and
+          team information exactly as they gave it.
+      - instruction: >-
+          The recipient accepts the transfer in their own App Store Connect account. Until
+          they do, the app stays where it is.
+    verify:
+      kind: manual
+      summary: The app no longer appears in this account's Apps list.
+      checklist:
+        - The app is gone from the Apps list of the sending account.
+        - The recipient confirms it appears in theirs.
+        - >-
+          The manifest's stores.apple.appId is updated (or the project is retired) so
+          Agentship stops planning against an app this account no longer owns.
+    lastVerified: '2026-08-03'

@@ -1,0 +1,34 @@
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+}
+
+def localProperties = new Properties()
+def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
+def flutterVersionName = localProperties.getProperty('flutter.versionName')
+
+android {
+    namespace "com.example.receipt_scanner"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.example.receiptScanner"
+        minSdk 23
+        targetSdk 35
+        versionCode flutterVersionCode.toInteger()
+        versionName flutterVersionName
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.debug
+        }
+        debug {
+        }
+    }
+}
+
+dependencies {
+    implementation "com.google.firebase:firebase-analytics"
+    implementation "com.android.billingclient:billing:7.0.0"
+}

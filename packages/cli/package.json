@@ -1,0 +1,64 @@
+{
+  "name": "agentship",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "Publish iOS and Android apps from an AI agent: MCP server, lifecycle CLI and skills.",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "app-store-connect",
+    "google-play",
+    "ios",
+    "android",
+    "release",
+    "agent-skills"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/manurrdd/agentship.git"
+  },
+  "homepage": "https://github.com/manurrdd/agentship#readme",
+  "bugs": {
+    "url": "https://github.com/manurrdd/agentship/issues"
+  },
+  "bin": {
+    "agentship": "./dist/bin.js"
+  },
+  "files": [
+    "dist",
+    "skills",
+    "tools.lock.json",
+    "data"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@napi-rs/keyring": "^1.3.0",
+    "commander": "^15.0.0",
+    "execa": "^9.5.2",
+    "plist": "^3.1.0",
+    "smol-toml": "^1.4.2",
+    "yaml": "^2.8.1",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@agentship/adapter-apple": "workspace:*",
+    "@agentship/adapter-google": "workspace:*",
+    "@agentship/analyzer": "workspace:*",
+    "@agentship/build": "workspace:*",
+    "@agentship/core": "workspace:*",
+    "@agentship/credentials": "workspace:*",
+    "@agentship/mcp": "workspace:*",
+    "@agentship/setup": "workspace:*",
+    "@agentship/toolchain": "workspace:*"
+  }
+}

@@ -1,0 +1,5 @@
+platform :ios, '16.0'
+target 'Ledger' do
+  pod 'RevenueCat'
+  pod 'Sentry', '~> 8.0'
+end

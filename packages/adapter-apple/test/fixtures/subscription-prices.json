@@ -1,0 +1,13 @@
+{
+  "data": [
+    {
+      "type": "subscriptionPrices",
+      "id": "sp-1",
+      "attributes": { "customerPrice": "4.99", "currency": "USD" },
+      "relationships": {
+        "territory": { "data": { "type": "territories", "id": "USA" } },
+        "subscriptionPricePoint": { "data": { "type": "subscriptionPricePoints", "id": "pp-usa-499" } }
+      }
+    }
+  ]
+}

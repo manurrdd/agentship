@@ -1,0 +1,39 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "declarationDir": "dist",
+    "emitDeclarationOnly": true
+  },
+  "include": ["src/**/*.ts"],
+  "references": [
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../credentials"
+    },
+    {
+      "path": "../toolchain"
+    },
+    {
+      "path": "../analyzer"
+    },
+    {
+      "path": "../catalog"
+    },
+    {
+      "path": "../adapter-apple"
+    },
+    {
+      "path": "../adapter-google"
+    },
+    {
+      "path": "../setup"
+    },
+    {
+      "path": "../build"
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+name: CI
+
+# Everything that must be true before a change lands, on both platforms Agentship supports.
+# macOS is not optional here: it is the only place an iOS build can ever run, and the
+# toolchain, keychain and path handling differ enough from Linux that a green Linux run
+# proves half the product.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      # `onlyBuiltDependencies` in pnpm-workspace.yaml limits install scripts to the two
+      # packages that genuinely need one (biome and esbuild place a platform binary);
+      # everything else is installed without running any code.
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm lint
+
+      - run: pnpm typecheck
+
+      # The unit and contract suites, including the permanent security regressions in
+      # packages/security. Real-store and real-build tests stay gated behind AGENTSHIP_E2E_*
+      # and never run here: they touch real accounts and cost money.
+      - run: pnpm test
+
+      # Complete agent journeys against the mock stores, the kill matrix and the
+      # no-telemetry check.
+      - run: pnpm e2e:mock
+
+      - run: pnpm build
+
+      # The published tarball, installed into a clean directory and run the way a user
+      # gets it: `agentship --version`, `setup --yes`, `doctor --json`, `uninstall`. Without
+      # AGENTSHIP_E2E_NETWORK the managed binaries are not downloaded, so doctor reports them
+      # as missing rather than failing the job.
+      - name: Clean install from npm pack
+        run: pnpm vitest run packages/cli/test/pack.test.ts
+        env:
+          AGENTSHIP_PACK_TEST: '1'
+
+      - name: Documentation matches the product
+        run: pnpm check:docs
+
+  audit:
+    name: dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      # Known vulnerabilities in the dependency tree. Advisory data changes without any
+      # change of ours, so this is its own job: it must be visible without blocking an
+      # unrelated pull request on a transitive advisory published this morning.
+      - run: pnpm audit --audit-level moderate
+        continue-on-error: true

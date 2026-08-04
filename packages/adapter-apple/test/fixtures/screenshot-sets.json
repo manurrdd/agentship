@@ -1,0 +1,22 @@
+{
+  "data": [
+    {
+      "type": "appScreenshotSets",
+      "id": "set-iphone-en",
+      "attributes": {
+        "screenshotDisplayType": "IPHONE_65",
+        "screenshots": [
+          {
+            "id": "shot-1",
+            "attributes": {
+              "fileName": "000-home.png",
+              "fileSize": 482910,
+              "sourceFileChecksum": "9f1c2a4b8d3e5f60718293a4b5c6d7e8",
+              "assetDeliveryState": { "state": "COMPLETE" }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

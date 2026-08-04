@@ -1,0 +1,14 @@
+{
+  "data": [
+    {
+      "type": "betaTesters",
+      "id": "tester-keep",
+      "attributes": { "firstName": "Ada", "lastName": "Lovelace", "email": "ada@example.com", "inviteType": "EMAIL" }
+    },
+    {
+      "type": "betaTesters",
+      "id": "tester-stale",
+      "attributes": { "firstName": "Grace", "lastName": "Hopper", "email": "grace@example.com", "inviteType": "EMAIL" }
+    }
+  ]
+}

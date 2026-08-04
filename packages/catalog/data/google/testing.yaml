@@ -1,0 +1,53 @@
+schemaVersion: 1
+store: google
+entries:
+  - id: google:closed-track-setup
+    class: agent_browser
+    category: other
+    title: Create a closed testing track and invite testers by e-mail
+    reason: >-
+      The Play Developer API assigns builds to tracks and manages tester *lists*, but it
+      cannot create a custom closed track, and it addresses testers through Google Groups
+      rather than individual e-mail addresses. A per-e-mail tester list is console work.
+    console:
+      url: https://play.google.com/console
+      path: ['<your app>', Testing, Closed testing, Create track]
+    preconditions:
+      - The app exists in Play Console and has had its first release.
+    steps:
+      - instruction: >-
+          Open Closed testing and create the track, or open the existing one the manifest
+          names.
+        fields:
+          - name: trackName
+            label: Track name
+            value: '{{release.track}}'
+            source: manifest.release.track
+            rationale: >-
+              The track the manifest targets. Agentship maps closed_testing onto Play's
+              `alpha` track; a differently named custom track has to be created here.
+      - instruction: >-
+          Add testers. A Google Group address is the option Agentship can then manage through
+          the API; an e-mail list can only be edited in the console.
+        fields:
+          - name: testers
+            label: Testers
+            required: false
+            rationale: >-
+              The manifest's testers.groups entry for this track, when it declares one.
+            caution: >-
+              Each tester has to accept the opt-in link before they count. Invitations sent
+              are not testers joined.
+      - instruction: >-
+          Copy the opt-in URL and give it to the user; testers cannot install the build
+          without it.
+    verify:
+      kind: api
+      summary: Play lists testers on this track.
+      check: google:track-testers
+      params:
+        track: '{{release.track}}'
+    notes: >-
+      Once a Google Group is attached, Agentship can add and remove members through the API;
+      only the track and the group itself need the console.
+    lastVerified: '2026-08-03'

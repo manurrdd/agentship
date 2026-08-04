@@ -1,0 +1,31 @@
+{
+  "name": "@agentship/setup",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "agentship-source": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "main": "./dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup"
+  },
+  "dependencies": {
+    "@agentship/build": "workspace:*",
+    "@agentship/core": "workspace:*",
+    "@agentship/credentials": "workspace:*",
+    "@agentship/toolchain": "workspace:*",
+    "execa": "^9.5.2",
+    "smol-toml": "^1.4.2",
+    "zod": "^4.1.13"
+  }
+}

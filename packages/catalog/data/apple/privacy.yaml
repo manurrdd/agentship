@@ -1,0 +1,57 @@
+schemaVersion: 1
+store: apple
+entries:
+  - id: apple:app-privacy
+    class: agent_browser
+    category: privacy
+    title: Declare App Privacy data use
+    reason: >-
+      App Privacy answers are not in the public App Store Connect API — verified against the
+      4.4.1 OpenAPI specification, which has no data-use resource — and they are a legal
+      declaration about what the app really does.
+    console:
+      url: https://appstoreconnect.apple.com/apps
+      path: [Apps, '<your app>', App Privacy, 'Get Started / Edit']
+    preconditions:
+      - The app record exists in App Store Connect.
+      - >-
+        The user has read the proposed declaration. Agentship proposes from the SDKs and
+        permissions found in the repository; only the user knows what the app actually
+        collects.
+    steps:
+      - instruction: >-
+          Answer whether the app collects data. Then, for each data type listed below, tick
+          it and answer its three questions: the purposes it is collected for, whether it is
+          linked to the user's identity, and whether it is used to track them across other
+          companies' apps and websites.
+        fields:
+          - name: privacySummary
+            label: Proposed declaration
+            value: '{{privacy.summary}}'
+            source: manifest.privacy.dataPractices
+            rationale: >-
+              Derived from the SDKs and permissions the analyzer found, projected onto
+              Apple's App Privacy categories. Each entry below carries the evidence.
+            caution: >-
+              A declaration that under-reports what the app collects is a policy violation,
+              not a typo. If anything here is wrong or incomplete, correct the manifest and
+              re-plan rather than editing only the console.
+      - instruction: >-
+          Publish the declaration. App Store Connect refuses a submission while App Privacy
+          is incomplete, so this has to be finished before the version is submitted.
+        caution: >-
+          Publishing changes the answers customers see on the product page immediately, for
+          the live version as well as the next one.
+    verify:
+      kind: manual
+      summary: >-
+        App Store Connect no longer lists App Privacy as outstanding, and the published
+        answers match the manifest's privacy section.
+      checklist:
+        - The App Privacy page shows a published declaration with no warning banner.
+        - Every data type in the proposal appears with the purposes the proposal listed.
+        - No data type is declared that the user did not agree to.
+    notes: >-
+      Agentship cannot read these answers back — Apple exposes no API for them — so this
+      operation is confirmed by the operator, never by Agentship on their behalf.
+    lastVerified: '2026-08-03'

@@ -1,0 +1,7 @@
+{
+  "subscriptions": [
+    { "packageName": "com.agentship.demo", "productId": "com.agentship.demo.pro.monthly", "status": "active" }
+  ],
+  "nextPageToken": null,
+  "meta": { "count": 1 }
+}

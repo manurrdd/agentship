@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "TrailMap",
+    "slug": "trailmap",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "platforms": ["ios", "android"],
+    "ios": {
+      "bundleIdentifier": "com.trailmap.app",
+      "buildNumber": "7",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "TrailMap shows your position on the trail."
+      }
+    },
+    "android": {
+      "package": "com.trailmap.app",
+      "versionCode": 7,
+      "permissions": ["ACCESS_FINE_LOCATION"]
+    }
+  }
+}

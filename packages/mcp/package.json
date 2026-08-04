@@ -1,0 +1,38 @@
+{
+  "name": "@agentship/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "agentship-source": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "main": "./dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup"
+  },
+  "dependencies": {
+    "@agentship/adapter-apple": "workspace:*",
+    "@agentship/adapter-google": "workspace:*",
+    "@agentship/analyzer": "workspace:*",
+    "@agentship/build": "workspace:*",
+    "@agentship/catalog": "workspace:*",
+    "@agentship/core": "workspace:*",
+    "@agentship/credentials": "workspace:*",
+    "@agentship/setup": "workspace:*",
+    "@agentship/toolchain": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "fast-check": "^4.4.0"
+  }
+}

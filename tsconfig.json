@@ -1,0 +1,38 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/core"
+    },
+    {
+      "path": "./packages/toolchain"
+    },
+    {
+      "path": "./packages/credentials"
+    },
+    {
+      "path": "./packages/analyzer"
+    },
+    {
+      "path": "./packages/catalog"
+    },
+    {
+      "path": "./packages/build"
+    },
+    {
+      "path": "./packages/adapter-apple"
+    },
+    {
+      "path": "./packages/adapter-google"
+    },
+    {
+      "path": "./packages/setup"
+    },
+    {
+      "path": "./packages/mcp"
+    },
+    {
+      "path": "./packages/cli"
+    }
+  ]
+}
