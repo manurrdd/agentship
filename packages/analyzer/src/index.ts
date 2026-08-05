@@ -1,8 +1,10 @@
 export { type AnalyzeOptions, analyzeApp } from './analyze.js';
 export { collectAssets } from './assets.js';
 export {
+  type CatalogLaunchCheck,
   type Ecosystem,
   loadAndroidRequirements,
+  loadCoreLaunchChecks,
   loadSdkCatalog,
   requiredTargetSdk,
   type SdkCatalogEntry,
@@ -13,6 +15,7 @@ export { type DetectionOutcome, detectFramework } from './detect.js';
 export { type AndroidExtraction, extractAndroid } from './extract-android.js';
 export { extractIos, type IosExtraction } from './extract-ios.js';
 export { extractProject, type ProjectExtraction } from './extract-project.js';
+export { deriveLaunchChecks } from './launch-checks.js';
 export { derivePrivacySignals } from './privacy.js';
 export {
   DEFAULT_LIMITS,

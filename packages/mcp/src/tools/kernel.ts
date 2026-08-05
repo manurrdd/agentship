@@ -1,8 +1,24 @@
-import { AgentshipError, loadManifest, type Store } from '@agentship/core';
+import {
+  AgentshipError,
+  loadManifest,
+  loadPlan,
+  type PendingStatus,
+  type RemoteAppState,
+  type Store,
+} from '@agentship/core';
 import { z } from 'zod';
 import { type Detail, ok, type ToolResponse } from '../format.js';
 import type { Session } from '../session.js';
-import { summarizeApply, summarizePlan, summarizeSnapshot } from '../summaries.js';
+import {
+  ADOPTABLE_NOTE,
+  adoptableFromStates,
+  DRIFT_NOTE,
+  driftFromStates,
+  planReadiness,
+  summarizeApply,
+  summarizePlan,
+  summarizeSnapshot,
+} from '../summaries.js';
 import {
   approvalsArg,
   DETAIL_DESCRIPTION,
@@ -57,9 +73,12 @@ This is a read: it never changes anything. It fails per store, so one store lack
     );
 
     const snapshots: Record<string, unknown> = {};
+    const states: RemoteAppState[] = [];
     for (const store of stores) {
       try {
-        snapshots[store] = summarizeSnapshot(await kernel.captureState(store), detail);
+        const snapshot = await kernel.captureState(store);
+        snapshots[store] = summarizeSnapshot(snapshot, detail);
+        states.push(snapshot.state);
       } catch (error) {
         snapshots[store] = {
           error: AgentshipError.is(error)
@@ -68,7 +87,57 @@ This is a read: it never changes anything. It fails per store, so one store lack
         };
       }
     }
-    return ok({ projectDir: repoRoot, stores, snapshots });
+
+    // Manifest gaps whose value the store already holds: offered for explicit adoption,
+    // never written automatically.
+    const manifest = await loadManifest(repoRoot).catch(() => undefined);
+    const adoptable = manifest === undefined ? [] : adoptableFromStates(manifest, states);
+    const drift = manifest === undefined ? [] : driftFromStates(manifest, states);
+
+    // What the store says would block a submission, asked live — unlike the rest of
+    // readiness, this needs no plan at all.
+    const reported = await Promise.all(
+      stores.map(async (store) => kernel.submissionReadiness(store)),
+    );
+
+    // The rest of readiness is presentation over what the last plan computed; a status call
+    // does not re-plan, so it derives from the stored plan (with today's pending statuses)
+    // and says so. No stored plan, no claim.
+    const stored = await loadPlan(repoRoot);
+    let readiness: Record<string, unknown> | undefined;
+    if (stored !== undefined) {
+      const statuses = new Map<string, PendingStatus>(
+        (await kernel.listPending()).map((operation) => [operation.id, operation.status]),
+      );
+      readiness = {
+        perStore: planReadiness(stored, statuses, reported),
+        note: `Console and manifest items derive from the plan created at ${stored.createdAt} (run agentship_plan for a fresh computation); "store" items were read from the store just now.`,
+      };
+    } else if (reported.some((entry) => entry.blockers.length > 0)) {
+      readiness = {
+        perStore: Object.fromEntries(
+          reported.map((entry) => [
+            entry.store,
+            entry.blockers.map((blocker) => ({
+              severity: blocker.blocking ? 'blocking' : 'warning',
+              source: 'store',
+              summary: `[${blocker.code}] ${blocker.message}`,
+              remediation: blocker.remediation ?? `Reported by the ${entry.store} store itself.`,
+            })),
+          ]),
+        ),
+        note: 'Read from the store just now. Run agentship_plan to also see what the manifest and the console still need.',
+      };
+    }
+
+    return ok({
+      projectDir: repoRoot,
+      stores,
+      snapshots,
+      ...(adoptable.length === 0 ? {} : { adoptable, adoptableNote: ADOPTABLE_NOTE }),
+      ...(drift.length === 0 ? {} : { drift, driftNote: DRIFT_NOTE }),
+      ...(readiness === undefined ? {} : { readiness }),
+    });
   },
 };
 
@@ -100,6 +169,10 @@ Classifications decide what you may do:
 
 An empty plan means the stores already match the manifest. That is a success, not a failure — say so instead of looking for something to do.
 
+"readiness" is what still stands between the project and a review submission. Items with source "store" are the store's own verdict, read live: a reviewer field that became mandatory, a screenshot in a size no longer accepted, a build still processing. Nothing in a manifest diff can predict those, so do not treat an empty plan as "ready to submit" without reading them.
+
+"drift" is where the store already disagrees with the manifest — text that differs, or a locale published in the store that the manifest never declares. Applying the manifest overwrites the first and ignores the second. Show drift to the user before approving a metadata change: Agentship cannot tell whether the store's version is stale or newer than the manifest's.
+
 Plans are cheap and always fresh; re-plan whenever anything may have changed rather than reusing an old plan or old approvals.`,
   schema: planSchema,
   annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: true },
@@ -113,10 +186,49 @@ Plans are cheap and always fresh; re-plan whenever anything may have changed rat
     await progress('capturing store state');
     const plan = await kernel.plan(input.stores === undefined ? {} : { stores: input.stores });
 
+    // Adoptable values: manifest gaps the store can already answer, offered — never
+    // written — from the snapshots this very plan was built on.
+    const manifest = await loadManifest(repoRoot);
+    const states: RemoteAppState[] = [];
+    for (const store of plan.stores) {
+      const snapshot = await kernel.lastSnapshot(store);
+      if (snapshot !== undefined) states.push(snapshot.state);
+    }
+    const adoptable = adoptableFromStates(manifest, states);
+
+    // What the store itself would refuse. One extra read-only call per store, and the only
+    // source for obstacles no manifest diff can see (a reviewer field that became mandatory,
+    // a screenshot size that stopped being accepted, a build still processing).
+    await progress('asking the stores what would block a submission');
+    const reported = await Promise.all(
+      plan.stores.map(async (store) => kernel.submissionReadiness(store)),
+    );
+    const unanswered = reported.filter((entry) => !entry.supported);
+
+    // Where the store already disagrees with the manifest. Reported before the approval, so
+    // an overwrite is a decision rather than a surprise.
+    const drift = driftFromStates(manifest, states);
+
+    const extras = {
+      /** What still stands between this project and a review submission, blockers first. */
+      readiness: planReadiness(plan, undefined, reported),
+      ...(drift.length === 0 ? {} : { drift, driftNote: DRIFT_NOTE }),
+      ...(unanswered.length === 0
+        ? {}
+        : {
+            readinessNotAsked: unanswered.map((entry) => ({
+              store: entry.store,
+              reason: entry.reason,
+            })),
+          }),
+      ...(adoptable.length === 0 ? {} : { adoptable, adoptableNote: ADOPTABLE_NOTE }),
+    };
+
     if (input.dryRunLevel === undefined) {
       return ok({
         projectDir: repoRoot,
         plan: summarizePlan(plan, detail),
+        ...extras,
         nextStep: nextStepForPlan(plan.actions.length, plan.approvalsRequired.length),
       });
     }
@@ -132,6 +244,7 @@ Plans are cheap and always fresh; re-plan whenever anything may have changed rat
     return ok({
       projectDir: repoRoot,
       plan: summarizePlan(rehearsal.plan, detail),
+      ...extras,
       dryRun: {
         level: input.dryRunLevel,
         ok: rehearsal.ok,

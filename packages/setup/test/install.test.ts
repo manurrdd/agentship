@@ -92,6 +92,18 @@ describe('installer', () => {
     expect(doctor.checks.filter((check) => check.id.startsWith('tool:'))).not.toHaveLength(0);
   });
 
+  it('doctor reports skills as not applicable for an agent without a skills directory', async () => {
+    context = await createTestEnv({});
+    await mkdir(join(context.home, '.cursor'), { recursive: true });
+    await setup(['cursor']);
+
+    const doctor = await runDoctor({ env: context.env });
+    const skillsCheck = doctor.checks.find((check) => check.id === 'skills:cursor');
+    // Informative, never a warning: nothing is wrong, skills simply do not apply here.
+    expect(skillsCheck?.status).toBe('ok');
+    expect(skillsCheck?.detail).toContain('no Agent Skills directory');
+  });
+
   it('is idempotent: a second setup changes nothing and keeps one record per agent', async () => {
     context = await createTestEnv({ onPath: ['claude'] });
     await setup('detected');

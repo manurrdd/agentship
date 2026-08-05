@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "lastVerified": "2026-08-05",
+  "comment": "Launch checks that apply to every app, regardless of which SDKs were detected. Each is a verifiable claim about the launch that lives outside the stores: Agentship reminds, the agent checks or does the work with its own tools, and the user may dismiss any of them with a reason. Never a gate — Agentship does not verify these and no plan is blocked by them.",
+  "checks": [
+    {
+      "id": "privacy-policy-published",
+      "claim": "The privacy policy is published at a public HTTPS URL that resolves — both stores reject a listing whose privacy policy link is dead."
+    },
+    {
+      "id": "terms-published",
+      "claim": "If the app has terms of service, they are published at a public HTTPS URL that resolves."
+    },
+    {
+      "id": "support-contact",
+      "claim": "The support URL or support email in the store listings is real and monitored — review teams and users will write to it."
+    },
+    {
+      "id": "listing-assets-final",
+      "claim": "Store screenshots and listing texts describe the build being submitted, with no placeholder content left."
+    }
+  ]
+}

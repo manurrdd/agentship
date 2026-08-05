@@ -47,6 +47,30 @@ describe('the console catalog', () => {
     }
   });
 
+  it('separates the itinerary from the contingencies and orders it with blockedBy', () => {
+    const byId = new Map(loadCatalog().map((entry) => [entry.id, entry]));
+    // Contingencies only apply when their situation occurs; they are never "the next step".
+    for (const id of [
+      'apple:app-transfer',
+      'apple:resolution-center',
+      'apple:release-version',
+      'google:policy-rejection',
+      'google:managed-publishing',
+    ]) {
+      expect(byId.get(id)?.applicability, id).toBe('contingency');
+    }
+    // Everything else defaults to the itinerary.
+    expect(byId.get('apple:create-app-record')?.applicability).toBe('itinerary');
+    // blockedBy expresses the real ordering, and every referenced id exists (loadCatalog
+    // validates that; these pin the edges the tools rely on).
+    expect(byId.get('apple:api-key')?.blockedBy).toContain('apple:developer-enrollment');
+    expect(byId.get('apple:app-privacy')?.blockedBy).toContain('apple:create-app-record');
+    expect(byId.get('google:first-release')?.blockedBy).toContain('google:create-app');
+    expect(byId.get('google:closed-testing-requirement')?.blockedBy).toContain(
+      'google:closed-track-setup',
+    );
+  });
+
   it('dates every entry, so a stale instruction is visible', () => {
     for (const entry of loadCatalog()) {
       expect(entry.lastVerified, entry.id).toMatch(/^\d{4}-\d{2}-\d{2}$/);

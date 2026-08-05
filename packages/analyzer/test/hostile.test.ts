@@ -36,7 +36,7 @@ describe('hostile repository', () => {
     const started = Date.now();
     const analysis = await analyzeApp(HOSTILE);
     expect(Date.now() - started).toBeLessThan(10_000);
-    expect(analysis.schemaVersion).toBe(1);
+    expect(analysis.schemaVersion).toBe(2);
   });
 
   it('never executes repository code', async () => {

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "lastVerified": "2026-08-03",
-  "comment": "Third-party SDKs whose presence changes what a publisher must declare or configure in a store. Matching is by dependency name per ecosystem: npm (package.json), pub (pubspec.yaml), pod (Podfile / Podfile.lock) and gradle (Maven group:artifact). Matches are exact, case-insensitive; `prefix` entries match any dependency starting with the given string. `privacy` lists the data types the SDK typically causes an app to collect — a proposal for the user to confirm, never a declaration Agentship makes on their behalf.",
+  "lastVerified": "2026-08-05",
+  "comment": "Third-party SDKs whose presence changes what a publisher must declare or configure in a store. Matching is by dependency name per ecosystem: npm (package.json), pub (pubspec.yaml), pod (Podfile / Podfile.lock) and gradle (Maven group:artifact). Matches are exact, case-insensitive; `prefix` entries match any dependency starting with the given string. `privacy` lists the data types the SDK typically causes an app to collect — a proposal for the user to confirm, never a declaration Agentship makes on their behalf. `launchChecks` are verifiable claims about the launch that this SDK makes necessary and that live outside the stores: Agentship reminds, the agent checks or does the work with its own tools, and the user may dismiss any of them with a reason.",
   "sdks": [
     {
       "id": "firebase-core",
@@ -10,6 +10,16 @@
       "privacy": ["identifiers", "diagnostics"],
       "implications": [
         "Firebase collects an installation identifier by default; both stores expect it to be declared."
+      ],
+      "launchChecks": [
+        {
+          "id": "sha256-fingerprints",
+          "claim": "Every Android signing certificate SHA-256 the app ships with is registered in the Firebase project — including the Play App Signing key, which only exists after the first release on Play."
+        },
+        {
+          "id": "app-check-enforced",
+          "claim": "If the backend uses Firebase App Check, enforcement is enabled for production and the release build attests successfully."
+        }
       ],
       "match": {
         "npm": ["firebase", "@react-native-firebase/app"],
@@ -39,6 +49,12 @@
       "categories": ["crash"],
       "privacy": ["diagnostics"],
       "implications": ["Crash reports count as diagnostics data in both stores."],
+      "launchChecks": [
+        {
+          "id": "dsyms-uploaded",
+          "claim": "dSYM upload for release builds is wired into the iOS build, so production crash reports arrive symbolicated."
+        }
+      ],
       "match": {
         "npm": ["@react-native-firebase/crashlytics"],
         "pub": ["firebase_crashlytics"],
@@ -55,6 +71,12 @@
         "Push requires an APNs key or certificate for iOS, configured in Apple's developer portal.",
         "iOS requires the Push Notifications capability in the app's entitlements."
       ],
+      "launchChecks": [
+        {
+          "id": "apns-key-uploaded",
+          "claim": "The APNs authentication key is uploaded to the Firebase project, so iOS push works in production, not only in local FCM tests."
+        }
+      ],
       "match": {
         "npm": ["@react-native-firebase/messaging"],
         "pub": ["firebase_messaging"],
@@ -70,6 +92,16 @@
       "implications": [
         "If the app offers any third-party sign-in, Apple requires Sign in with Apple as an equivalent option."
       ],
+      "launchChecks": [
+        {
+          "id": "account-deletion-url",
+          "claim": "A public account-deletion page exists and resolves; both stores require one for apps where users create accounts."
+        },
+        {
+          "id": "auth-links-production",
+          "claim": "Authorized domains and deep-link configuration are published for the production app — for Android email-link or app-link sign-in, assetlinks.json needs the Play App Signing key SHA-256, which only exists after the first release on Play."
+        }
+      ],
       "match": {
         "npm": ["@react-native-firebase/auth"],
         "pub": ["firebase_auth"],
@@ -83,6 +115,12 @@
       "categories": ["storage"],
       "privacy": ["user_content"],
       "implications": [],
+      "launchChecks": [
+        {
+          "id": "security-rules-production",
+          "claim": "Firestore and Storage security rules have been reviewed for production; no collection or bucket ships with test-mode rules that allow open read or write."
+        }
+      ],
       "match": {
         "npm": ["@react-native-firebase/storage", "@react-native-firebase/firestore"],
         "pub": ["firebase_storage", "cloud_firestore"],
@@ -98,6 +136,16 @@
       "implications": [
         "In-app purchase products must exist in App Store Connect and Play Console before a build using them can be reviewed.",
         "Paid apps require completed tax and banking agreements in both stores."
+      ],
+      "launchChecks": [
+        {
+          "id": "store-credentials-linked",
+          "claim": "RevenueCat holds the production store credentials (App Store Connect API key, Play service account) and every store product is mapped to an entitlement."
+        },
+        {
+          "id": "server-notifications",
+          "claim": "App Store server notifications and Play real-time developer notifications point at RevenueCat, so subscription state stays correct after launch."
+        }
       ],
       "match": {
         "npm": ["react-native-purchases", "@revenuecat/purchases-js"],
@@ -145,6 +193,16 @@
         "Apple requires App Tracking Transparency and NSUserTrackingUsageDescription when the advertising identifier is used for tracking.",
         "Google Play requires the Advertising ID permission to be declared and the ads presence answered in Data Safety."
       ],
+      "launchChecks": [
+        {
+          "id": "app-ads-txt",
+          "claim": "app-ads.txt is published at the root of the developer website named in the store listings and contains the AdMob publisher id."
+        },
+        {
+          "id": "production-ad-units",
+          "claim": "The release build uses production ad unit ids, not Google's sample ids — sample ids in a shipped build earn no revenue and can flag the account."
+        }
+      ],
       "match": {
         "npm": ["react-native-google-mobile-ads", "expo-ads-admob"],
         "pub": ["google_mobile_ads"],
@@ -176,6 +234,12 @@
       "categories": ["crash", "analytics"],
       "privacy": ["diagnostics"],
       "implications": ["Crash and performance data must be declared as diagnostics."],
+      "launchChecks": [
+        {
+          "id": "symbols-uploaded",
+          "claim": "Debug symbols (dSYMs, ProGuard/R8 mappings) are uploaded for release builds, so production crash reports are readable."
+        }
+      ],
       "match": {
         "npm": ["@sentry/react-native", "@sentry/browser", "@sentry/node"],
         "pub": ["sentry_flutter"],
@@ -245,6 +309,12 @@
       "categories": ["push"],
       "privacy": ["identifiers"],
       "implications": ["Push requires an APNs key for iOS and the Push Notifications entitlement."],
+      "launchChecks": [
+        {
+          "id": "push-credentials",
+          "claim": "Production push credentials (APNs key for iOS, FCM service account for Android) are configured in OneSignal."
+        }
+      ],
       "match": {
         "npm": ["react-native-onesignal", "onesignal-expo-plugin"],
         "pub": ["onesignal_flutter"],
@@ -299,6 +369,12 @@
       "implications": [
         "Map SDKs usually imply location access, which requires purpose strings on iOS and a privacy answer on both stores."
       ],
+      "launchChecks": [
+        {
+          "id": "api-key-restricted",
+          "claim": "The Maps API key is restricted to the app's bundle id / package name and signing fingerprint, so a key lifted from the binary is useless elsewhere."
+        }
+      ],
       "match": {
         "npm": ["react-native-maps"],
         "pub": ["google_maps_flutter"],
@@ -307,11 +383,46 @@
       }
     },
     {
+      "id": "supabase",
+      "name": "Supabase",
+      "categories": ["auth", "storage"],
+      "privacy": ["contact_info", "identifiers", "user_content"],
+      "implications": [
+        "If the app offers any third-party sign-in, Apple requires Sign in with Apple as an equivalent option."
+      ],
+      "launchChecks": [
+        {
+          "id": "rls-enabled",
+          "claim": "Row Level Security is enabled on every production table; the anon key grants nothing the policies do not explicitly allow."
+        },
+        {
+          "id": "account-deletion-url",
+          "claim": "A public account-deletion page exists and resolves; both stores require one for apps where users create accounts."
+        },
+        {
+          "id": "auth-redirects",
+          "claim": "Auth redirect URLs and the app's deep-link scheme are configured in the Supabase project for the production app."
+        }
+      ],
+      "match": {
+        "npm": ["@supabase/supabase-js"],
+        "pub": ["supabase_flutter"],
+        "pod": [],
+        "gradle": []
+      }
+    },
+    {
       "id": "expo-notifications",
       "name": "Expo Notifications",
       "categories": ["push"],
       "privacy": ["identifiers"],
       "implications": ["Push requires an APNs key for iOS and an FCM server key for Android."],
+      "launchChecks": [
+        {
+          "id": "push-credentials",
+          "claim": "Production push credentials (APNs key, FCM) are configured for the production build profile in EAS."
+        }
+      ],
       "match": {
         "npm": ["expo-notifications"],
         "pub": [],
@@ -326,6 +437,12 @@
       "privacy": ["diagnostics"],
       "implications": [
         "Over-the-air updates must not change the app's behaviour beyond what the reviewed binary does; both stores restrict this."
+      ],
+      "launchChecks": [
+        {
+          "id": "production-channel",
+          "claim": "The updates channel or branch baked into the release build points at production, not at a development branch."
+        }
       ],
       "match": { "npm": ["expo-updates"], "pub": [], "pod": [], "gradle": [] }
     }

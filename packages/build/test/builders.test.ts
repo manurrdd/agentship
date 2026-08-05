@@ -22,7 +22,7 @@ function manifest(overrides: Record<string, unknown> = {}): AgentshipManifest {
     version: 1,
     app: { name: 'Example' },
     stores: { apple: { bundleId: 'com.example.app', appId: 'app-1' } },
-    release: { version: '1.0.0', buildNumber: '7' },
+    release: { version: '1.0.0', buildNumber: '7', track: 'internal_testing' },
     metadata: { primaryLocale: 'en-US', locales: { 'en-US': { name: 'Example' } } },
     ...overrides,
   });

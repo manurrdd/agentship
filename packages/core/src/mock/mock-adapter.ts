@@ -38,6 +38,8 @@ import type {
   RemoteProduct,
   RemoteProductOffer,
   ScreenshotDevice,
+  SubmissionBlocker,
+  SubmissionReadiness,
   SubmissionRef,
   SubmissionStatus,
   VersionState,
@@ -192,6 +194,14 @@ export interface MockStoreState {
    * privacy pending, which is what gates a submission.
    */
   appPrivacyDone: boolean;
+  /**
+   * Apple only: what the store itself would refuse the submission for.
+   *
+   * Deliberately independent of everything else in this state — that is the point of asking
+   * the store. A screenshot size Apple stopped accepting is not derivable from a manifest
+   * diff, so the mock lets a test state one rather than compute it.
+   */
+  submissionBlockers: SubmissionBlocker[];
 }
 
 export interface MockEffects {
@@ -235,6 +245,7 @@ export function createMockState(overrides: Partial<MockStoreState> = {}): MockSt
     submissions: [],
     products: new Map(),
     appPrivacyDone: true,
+    submissionBlockers: [],
     ...overrides,
   };
 }
@@ -399,13 +410,23 @@ export class MockStoreAdapter implements StoreAdapter {
 
   async checkAuth(_context: AdapterContext, ref?: AppRef): Promise<AuthCheckResult> {
     if (this.store === 'google' && ref === undefined) {
+      // Not a rejection: the check simply cannot run without an app to run it against.
       return {
+        status: 'unverifiable',
         ok: false,
         detail:
           'Google credentials can only be proven against a specific app; supply the package name.',
       };
     }
-    return { ok: true, account: 'mock-account' };
+    return { status: 'ok', ok: true, account: 'mock-account' };
+  }
+
+  async findApp(
+    _context: AdapterContext,
+    bundleId: string,
+  ): Promise<{ id: string; name: string } | undefined> {
+    if (this.store !== 'apple' || bundleId !== this.state.bundleId) return undefined;
+    return { id: 'app-1', name: this.state.name };
   }
 
   async listApps(): Promise<AppSummary[]> {
@@ -1315,6 +1336,26 @@ export class MockStoreAdapter implements StoreAdapter {
       state: known ? 'waiting_review' : 'unknown',
       confidence: this.store === 'google' ? 'inferred' : 'certain',
     };
+  }
+
+  /**
+   * Apple answers; Google does not have the endpoint. Mirrors the real adapters, so a test
+   * that consumes readiness sees the same asymmetry the product has.
+   */
+  async submissionReadiness(
+    _context: AdapterContext,
+    _ref: AppRef,
+    _version: string,
+  ): Promise<SubmissionReadiness> {
+    if (this.store === 'google') {
+      return {
+        store: 'google',
+        supported: false,
+        reason: 'Google Play exposes no pre-submission readiness check.',
+        blockers: [],
+      };
+    }
+    return { store: 'apple', supported: true, blockers: [...this.state.submissionBlockers] };
   }
 
   async setPhasedRelease(

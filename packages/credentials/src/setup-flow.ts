@@ -23,8 +23,10 @@ export type SetupFieldKind =
   | 'apple_key_id'
   | 'apple_issuer_id'
   | 'apple_p8'
+  | 'apple_p8_path'
   | 'apple_key_name'
-  | 'google_sa_json';
+  | 'google_sa_json'
+  | 'google_sa_json_path';
 
 export interface SetupField {
   /** Machine name; matches the credential property it fills. */
@@ -159,6 +161,7 @@ const APPLE_FLOW: SetupFlow = {
         'Click Download API Key next to the new key.',
         'Save the AuthKey_<KEYID>.p8 file somewhere you control.',
         'Copy the KEY ID value shown in the table.',
+        'Preferred: hand Agentship the path to the saved .p8 file (privateKeyPath) instead of pasting its contents — the key then never travels through the conversation.',
       ],
       collects: [
         {
@@ -171,13 +174,23 @@ const APPLE_FLOW: SetupFlow = {
           example: 'ABCD1234EF',
         },
         {
+          name: 'privateKeyPath',
+          label: 'Path to the .p8 file',
+          kind: 'apple_p8_path',
+          required: false,
+          secret: false,
+          multiline: false,
+          example: '/Users/me/Downloads/AuthKey_ABCD1234EF.p8',
+          help: 'Preferred over pasting the contents: Agentship reads the file itself and the secret never enters the chat. Provide this or privateKeyPem.',
+        },
+        {
           name: 'privateKeyPem',
           label: 'Contents of the .p8 file',
           kind: 'apple_p8',
           required: true,
           secret: true,
           multiline: true,
-          help: 'Paste the whole file, including the BEGIN and END lines.',
+          help: 'Alternative to privateKeyPath, when a file path cannot be shared. Paste the whole file, including the BEGIN and END lines.',
         },
       ],
       warnings: [
@@ -261,8 +274,19 @@ const GOOGLE_FLOW: SetupFlow = {
         'Do not grant it any project-level role: its permissions come from Play Console, not from Google Cloud.',
         'Open the new service account, go to the Keys tab, and choose Add key, then Create new key, type JSON.',
         'Save the downloaded .json file.',
+        'Preferred: hand Agentship the path to the saved .json file (serviceAccountJsonPath) instead of pasting its contents — the key then never travels through the conversation.',
       ],
       collects: [
+        {
+          name: 'serviceAccountJsonPath',
+          label: 'Path to the service-account .json file',
+          kind: 'google_sa_json_path',
+          required: false,
+          secret: false,
+          multiline: false,
+          example: '/Users/me/Downloads/agentship-publisher-1234.json',
+          help: 'Preferred over pasting the contents: Agentship reads the file itself and the secret never enters the chat. Provide this or serviceAccountJson.',
+        },
         {
           name: 'serviceAccountJson',
           label: 'Contents of the service-account .json file',
@@ -270,7 +294,7 @@ const GOOGLE_FLOW: SetupFlow = {
           required: true,
           secret: true,
           multiline: true,
-          help: 'Paste the whole file. Agentship reads client_email and project_id from it.',
+          help: 'Alternative to serviceAccountJsonPath, when a file path cannot be shared. Paste the whole file. Agentship reads client_email and project_id from it.',
         },
       ],
       warnings: [
@@ -356,6 +380,12 @@ export function validateSetupValue(kind: SetupFieldKind, value: string): FieldVa
         break;
       case 'apple_key_name':
         if (value.trim() === '') return { ok: false, message: 'The key name cannot be empty.' };
+        break;
+      // Paths are only checked for shape here; the file's *contents* are read and then
+      // validated exactly like the pasted equivalent before anything is stored.
+      case 'apple_p8_path':
+      case 'google_sa_json_path':
+        if (value.trim() === '') return { ok: false, message: 'The file path cannot be empty.' };
         break;
     }
     return { ok: true };

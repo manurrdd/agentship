@@ -48,6 +48,7 @@ entries:
 
   - id: apple:agreements-tax-banking
     class: human_only
+    blockedBy: [apple:developer-enrollment]
     category: agreements
     title: Accept agreements and complete tax and banking details
     reason: >-
@@ -87,6 +88,7 @@ entries:
 
   - id: apple:api-key
     class: human_only
+    blockedBy: [apple:developer-enrollment]
     category: credentials
     title: Create the App Store Connect API key
     reason: >-

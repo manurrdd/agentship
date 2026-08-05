@@ -82,9 +82,17 @@ export const GOOGLE_VERIFIERS: ReadonlyMap<string, PendingVerifier> = new Map<
   ],
   [
     // The first release is the gate that makes API uploads possible at all; a track serving
-    // a build is the observable consequence.
+    // a build is the observable consequence. When the operation names the track the manifest
+    // asked for, that track is the one that has to be serving it: "some track has a build"
+    // would report success for a release that went to the wrong audience, which is precisely
+    // the mistake this entry exists to prevent.
     'google:first-release-done',
-    (_operation, state) => state.tracks.some((track) => track.buildNumbers.length > 0),
+    (operation, state) => {
+      const wanted = operation.verification?.params?.['track'];
+      const tracks =
+        wanted === undefined ? state.tracks : state.tracks.filter((one) => one.track === wanted);
+      return tracks.some((track) => track.buildNumbers.length > 0);
+    },
   ],
   [
     // Play exposes no endpoint for the App content answers. The one thing a snapshot can say

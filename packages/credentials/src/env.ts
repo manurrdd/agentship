@@ -60,14 +60,18 @@ function incomplete(store: Store, missing: readonly string[]): AgentshipError {
   );
 }
 
-async function readMaterial(
-  inline: string | undefined,
-  path: string | undefined,
+/**
+ * Reads credential material from a file on this machine.
+ *
+ * Shared by the CI environment fallback and by `agentship_configure_auth` when the user
+ * hands over a path instead of pasting the secret — the path route is preferred there,
+ * because the secret then never travels through a conversation.
+ */
+export async function readCredentialFile(
+  path: string,
   store: Store,
   what: string,
-): Promise<string | undefined> {
-  if (inline !== undefined) return inline;
-  if (path === undefined) return undefined;
+): Promise<string> {
   try {
     return await readFile(path, 'utf8');
   } catch (cause) {
@@ -78,6 +82,17 @@ async function readMaterial(
       { store, remediation: { summary: 'Check the path and that the file is readable.' } },
     );
   }
+}
+
+async function readMaterial(
+  inline: string | undefined,
+  path: string | undefined,
+  store: Store,
+  what: string,
+): Promise<string | undefined> {
+  if (inline !== undefined) return inline;
+  if (path === undefined) return undefined;
+  return readCredentialFile(path, store, what);
 }
 
 /** Builds Apple credentials from the environment, or `undefined` when none are set. */

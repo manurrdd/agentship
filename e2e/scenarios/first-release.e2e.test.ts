@@ -88,7 +88,7 @@ describe('first release: an app that does not exist yet', () => {
     });
     // Verification asks the store rather than trusting the "done".
     const verified = await journey.pending('verify', { id: 'google:create-app' });
-    expect(verified.payload['verified']).toBe(true);
+    expect((verified.payload['verifications'] as { verified: boolean }[])[0]?.verified).toBe(true);
 
     // The record is state on disk, not memory: a new process still sees it.
     await journey.kill();

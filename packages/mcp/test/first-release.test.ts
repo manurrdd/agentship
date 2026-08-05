@@ -51,7 +51,7 @@ describe('the console itinerary of a first release', () => {
     harness = undefined;
   });
 
-  it('lists every console step for both stores before anything is planned', async () => {
+  it('lists the itinerary in dependency order, with contingencies set apart', async () => {
     harness = await createMcpHarness({
       stores: ['apple', 'google'],
       manifest: newAppManifest(),
@@ -61,7 +61,8 @@ describe('the console itinerary of a first release', () => {
       projectDir: harness.repoRoot,
       action: 'list',
     });
-    const ids = (listed.payload['pending'] as { id: string }[]).map((entry) => entry.id);
+    const entries = listed.payload['pending'] as { id: string; blockedBy?: string[] }[];
+    const ids = entries.map((entry) => entry.id);
     for (const id of [
       'apple:developer-enrollment',
       'apple:agreements-tax-banking',
@@ -78,6 +79,89 @@ describe('the console itinerary of a first release', () => {
     ]) {
       expect(ids, `${id} is missing from the first-release itinerary`).toContain(id);
     }
+
+    // The itinerary is topologically ordered: nothing appears before what unblocks it.
+    const position = new Map(ids.map((id, index) => [id, index]));
+    const before = (first: string, second: string) => {
+      expect(position.get(first), `${first} should come before ${second}`).toBeLessThan(
+        position.get(second) as number,
+      );
+    };
+    before('apple:developer-enrollment', 'apple:api-key');
+    before('apple:developer-enrollment', 'apple:create-app-record');
+    before('apple:create-app-record', 'apple:app-privacy');
+    before('google:account-and-payments', 'google:create-app');
+    before('google:create-app', 'google:content-rating');
+    before('google:closed-track-setup', 'google:closed-testing-requirement');
+
+    // blockedBy travels with each entry, so an agent can explain the ordering.
+    const apiKey = entries.find((entry) => entry.id === 'apple:api-key');
+    expect(apiKey?.blockedBy).toContain('apple:developer-enrollment');
+
+    // Contingencies are listed apart: they only apply when their situation occurs.
+    const contingencies = (listed.payload['contingencies'] as { id: string }[]).map(
+      (entry) => entry.id,
+    );
+    for (const id of [
+      'apple:app-transfer',
+      'apple:resolution-center',
+      'apple:release-version',
+      'google:policy-rejection',
+      'google:managed-publishing',
+    ]) {
+      expect(contingencies, `${id} should be a contingency`).toContain(id);
+      expect(ids, `${id} must not sit in the itinerary`).not.toContain(id);
+    }
+    expect(String(listed.payload['contingenciesNote'])).toContain('only apply');
+
+    // The actor grouping tells an agent what it may attempt and what is the user's alone.
+    const actors = listed.payload['actors'] as { agent_browser: string[]; human_only: string[] };
+    expect(actors.human_only).toContain('apple:developer-enrollment');
+    expect(actors.agent_browser).toContain('google:create-app');
+  });
+
+  it('marks operations done from local evidence, without persisting the inference', async () => {
+    // Credentials in the environment prove an API key exists — and an ASC API key only
+    // exists with an active membership, so the enrolment is inferred done too.
+    process.env['AGENTSHIP_APPLE_KEY_ID'] = 'ABCD1234EF';
+    try {
+      harness = await createMcpHarness({ stores: ['apple'], manifest: newAppManifest() });
+      const listed = await harness.call('agentship_pending', {
+        projectDir: harness.repoRoot,
+        action: 'list',
+      });
+      const byId = new Map(
+        (listed.payload['pending'] as { id: string; status: string; notes?: string }[]).map(
+          (entry) => [entry.id, entry],
+        ),
+      );
+      expect(byId.get('apple:api-key')?.status).toBe('done');
+      expect(byId.get('apple:api-key')?.notes).toContain('agentship_configure_auth');
+      expect(byId.get('apple:developer-enrollment')?.status).toBe('done');
+      expect(byId.get('apple:developer-enrollment')?.notes).toContain('active Apple Developer');
+      // The manifest carries stores.apple.appId, which only exists once the record does.
+      expect(byId.get('apple:create-app-record')?.status).toBe('done');
+      expect(byId.get('apple:create-app-record')?.notes).toContain('stores.apple.appId');
+      // Computed, never persisted: nothing landed in .agentship/pending/ for these.
+      const persisted = await import('node:fs/promises').then((fs) =>
+        fs.readdir(`${harness?.repoRoot}/.agentship/pending`).catch(() => [] as string[]),
+      );
+      expect(persisted.some((file) => file.includes('api-key'))).toBe(false);
+    } finally {
+      delete process.env['AGENTSHIP_APPLE_KEY_ID'];
+    }
+  });
+
+  it('never infers google:create-app from the package name, which always exists', async () => {
+    harness = await createMcpHarness({ stores: ['google'], manifest: newAppManifest() });
+    const listed = await harness.call('agentship_pending', {
+      projectDir: harness.repoRoot,
+      action: 'list',
+    });
+    const entry = (listed.payload['pending'] as { id: string; status: string }[]).find(
+      (candidate) => candidate.id === 'google:create-app',
+    );
+    expect(entry?.status).toBe('open');
   });
 
   it('fills the create-app form with the values the manifest already knows', async () => {
@@ -167,8 +251,12 @@ describe('the console itinerary of a first release', () => {
       action: 'verify',
       id: 'google:create-app',
     });
-    expect(verified.payload['verified']).toBe(true);
-    expect((verified.payload['pending'] as { status: string }).status).toBe('verified');
+    const [verification] = verified.payload['verifications'] as {
+      verified: boolean;
+      pending: { status: string };
+    }[];
+    expect(verification?.verified).toBe(true);
+    expect(verification?.pending.status).toBe('verified');
 
     // And the record survives: a later list shows it verified, not open again.
     const listed = await harness.call('agentship_pending', {
@@ -216,7 +304,7 @@ describe('the console itinerary of a first release', () => {
       action: 'verify',
       id: 'apple:app-privacy',
     });
-    expect(verified.payload['verified']).toBe(true);
+    expect((verified.payload['verifications'] as { verified: boolean }[])[0]?.verified).toBe(true);
 
     const resumed = await harness.call('agentship_resume', {});
     const stillBlocked = outcomesOf(resumed.payload).some(

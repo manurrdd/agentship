@@ -42,6 +42,7 @@ entries:
 
   - id: google:closed-testing-requirement
     class: human_only
+    blockedBy: [google:closed-track-setup]
     category: account
     title: Run the closed test a new personal account needs before production
     reason: >-

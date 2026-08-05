@@ -103,6 +103,8 @@ describe('secrets', () => {
     }
     // The non-secret metadata is still reported, so the agent can tell what is configured.
     expect(responses[0]?.text).toContain('"source": "env"');
+    // And the env path is explained: precedence over the keyring, profile-agnostic.
+    expect(responses[0]?.text).toContain('precedence over anything stored in the OS keyring');
   });
 
   it('returns the credential flow without asking anyone to hand over a password', async () => {

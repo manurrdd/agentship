@@ -3,6 +3,7 @@ store: apple
 entries:
   - id: apple:app-privacy
     class: agent_browser
+    blockedBy: [apple:create-app-record]
     category: privacy
     title: Declare App Privacy data use
     reason: >-

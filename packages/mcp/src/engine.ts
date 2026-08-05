@@ -15,6 +15,7 @@ import {
   type LocalActionRunner,
   type Logger,
   type LogSink,
+  loadManifest,
   logsDir,
   MockStoreAdapter,
   mockVerifiers,
@@ -134,20 +135,43 @@ export class Engine {
   readonly #adapters = new Map<string, ReadonlyMap<Store, StoreAdapter>>();
   readonly #factory: AdapterFactory;
   readonly #logger: Logger;
-  readonly #profile: string;
+  readonly #explicitProfile: string | undefined;
 
   constructor(options: EngineOptions) {
     this.#factory = options.adapterFactory ?? defaultAdapterFactory();
     this.#logger = options.logger;
-    this.#profile = options.profile ?? DEFAULT_PROFILE;
+    this.#explicitProfile = options.profile;
   }
 
+  /** The session-level profile: the explicit override, or the default. Project-agnostic. */
   get profile(): string {
-    return this.#profile;
+    return this.#explicitProfile ?? DEFAULT_PROFILE;
   }
 
-  context(repoRoot: string): AdapterContext {
-    return { profile: this.#profile, logger: this.#logger, cwd: repoRoot };
+  /**
+   * The credential profile effective for one project.
+   *
+   * Precedence: an explicit per-call profile (handled by the tools themselves) beats
+   * everything; then a profile the session was constructed with (an operator override);
+   * then `credentials.profile` from the project's manifest — which is what lets a
+   * repository declare "this app publishes with the work account" and have every tool
+   * honour it; then the default. Resolved lazily per project, because the session exists
+   * before any project is known.
+   */
+  async profileFor(repoRoot: string): Promise<string> {
+    if (this.#explicitProfile !== undefined) return this.#explicitProfile;
+    const manifest = await loadManifest(repoRoot).catch(() => undefined);
+    return manifest?.credentials.profile ?? DEFAULT_PROFILE;
+  }
+
+  /** The manifest's declared profile, when the project has one. For status reporting. */
+  async manifestProfile(repoRoot: string): Promise<string | undefined> {
+    const manifest = await loadManifest(repoRoot).catch(() => undefined);
+    return manifest?.credentials.profile;
+  }
+
+  context(repoRoot: string, profile?: string): AdapterContext {
+    return { profile: profile ?? this.profile, logger: this.#logger, cwd: repoRoot };
   }
 
   async adapters(repoRoot: string): Promise<ReadonlyMap<Store, StoreAdapter>> {
@@ -166,7 +190,7 @@ export class Engine {
     return new Kernel({
       repoRoot,
       adapters,
-      context: this.context(repoRoot),
+      context: this.context(repoRoot, await this.profileFor(repoRoot)),
       registry: createRegistry(),
       verifiers: createVerifiers(mocked),
       localRunners: createLocalRunners(),

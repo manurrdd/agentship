@@ -17,12 +17,19 @@ import {
 
 export type Ecosystem = 'npm' | 'pub' | 'pod' | 'gradle';
 
+/** A launch check as it sits in the data files, before a source is attached. */
+export interface CatalogLaunchCheck {
+  readonly id: string;
+  readonly claim: string;
+}
+
 export interface SdkCatalogEntry {
   readonly id: string;
   readonly name: string;
   readonly categories: readonly SdkCategory[];
   readonly privacy: readonly PrivacyDataType[];
   readonly implications: readonly string[];
+  readonly launchChecks?: readonly CatalogLaunchCheck[];
   readonly match: Readonly<Record<Ecosystem, readonly string[]>>;
 }
 
@@ -45,6 +52,12 @@ interface AndroidRequirementsFile {
   readonly targetSdkRequirements: readonly TargetSdkRequirement[];
 }
 
+interface LaunchChecksFile {
+  readonly schemaVersion: number;
+  readonly lastVerified: string;
+  readonly checks: readonly CatalogLaunchCheck[];
+}
+
 function loadData<T>(name: string): T {
   const path = fileURLToPath(new URL(`../data/${name}`, import.meta.url));
   try {
@@ -60,6 +73,7 @@ function loadData<T>(name: string): T {
 
 let sdkCatalog: SdkCatalogFile | undefined;
 let androidRequirements: AndroidRequirementsFile | undefined;
+let coreLaunchChecks: LaunchChecksFile | undefined;
 
 export function loadSdkCatalog(): readonly SdkCatalogEntry[] {
   sdkCatalog ??= loadData<SdkCatalogFile>('sdk-catalog.json');
@@ -69,6 +83,12 @@ export function loadSdkCatalog(): readonly SdkCatalogEntry[] {
 export function sdkCatalogLastVerified(): string {
   sdkCatalog ??= loadData<SdkCatalogFile>('sdk-catalog.json');
   return sdkCatalog.lastVerified;
+}
+
+/** The launch checks that apply to every app, regardless of detected SDKs. */
+export function loadCoreLaunchChecks(): readonly CatalogLaunchCheck[] {
+  coreLaunchChecks ??= loadData<LaunchChecksFile>('launch-checks.json');
+  return coreLaunchChecks.checks;
 }
 
 export function loadAndroidRequirements(): AndroidRequirementsFile {

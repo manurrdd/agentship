@@ -3,6 +3,7 @@ store: apple
 entries:
   - id: apple:resolution-center
     class: agent_browser
+    applicability: contingency
     category: review
     title: Read and answer App Review messages
     reason: >-
@@ -37,6 +38,7 @@ entries:
 
   - id: apple:release-version
     class: agent_browser
+    applicability: contingency
     category: review
     title: Release the approved version to the App Store
     reason: >-

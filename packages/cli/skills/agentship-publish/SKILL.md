@@ -18,7 +18,10 @@ other way — no store CLIs, no scripts, no browser automation of your own.
 3. **Fill the gaps.** Ask the user only about `manifest.gaps` (and about values marked
    `guess` that will be visible in the store). Write the answers into
    `.agentship/agentship.yaml`. Never ask about a `certain` value — Agentship read it from the
-   project and it is right.
+   project and it is right. If `agentship_plan` or `agentship_store_status` return an
+   `adoptable` section, the store already holds a value for a gap: offer it to the user
+   *before* asking them to write one, and on their agreement write it into the manifest
+   yourself with a provenance comment (`# adopted from <store> on <date>`).
 4. **`agentship_plan()`** — returns every action with an id, a classification and its exact
    diff, including the build when the release has no usable artifact yet. An empty plan
    means the stores already match the manifest: say so, and stop.
@@ -118,6 +121,21 @@ Review rejects those), an advertising SDK with no advertising purpose declared, 
 declared without App Tracking Transparency, or a declaration confirmed before the code
 changed. Relay them; they are the usual first-submission rejections.
 
+## Launch checks: the work outside the stores
+
+A launch is more than the two stores, and the failure mode is not ignorance but omission:
+you know how to publish a legal page or configure a backend — what slips is remembering
+that this app needs it. `agentship_analyze` returns `launchChecks` for exactly that: a
+constant core (privacy policy resolving, support contact, final listing assets) plus
+whatever the detected SDKs make necessary (app-ads.txt for an ads SDK, an account-deletion
+page for an auth SDK, production push credentials, backend security rules).
+
+Before submitting for review, walk them with the user one by one. Each is a **question,
+not a task**: it is already done, or you do it now with your own tools, or the user says it
+does not apply — note their reason and move on. They are reminders, never gates: Agentship
+does not perform them, does not verify them, and no plan is blocked by them. Do not turn
+them into a checklist the user must clear; turn them into things nobody forgot.
+
 ## What Agentship cannot automate
 
 Some things have no API (see `references/stores.md` for the real table).
@@ -138,6 +156,18 @@ blocked until it is done.
 Only ever through `agentship_configure_auth`. Call it without values to get the exact console
 steps, relay them, and call it again with everything the user brings back. It stores the
 secret in the OS keyring and never echoes it.
+
+Prefer the file path over the pasted secret: ask the user for the *path* to the downloaded
+`.p8` (`privateKeyPath`) or service-account `.json` (`serviceAccountJsonPath`) and pass
+that — Agentship reads the file itself, so the key never enters the conversation. Pasting
+the contents is the fallback when a path cannot be shared. After a successful store, relay
+the response's note: the source file is no longer needed and should be deleted (or kept at
+`chmod 600`).
+
+If verification comes back `unverifiable`, the credential is stored but nothing was tested
+against the store — say that, never "the store rejected it". A Google credential can only
+be verified against a specific app, so it stays unverifiable until a project with a
+`stores.google.packageName` is active (or the app exists in Play Console).
 
 Outside that tool, never ask for keys, passwords or tokens; never write a credential into
 a file, the manifest, or a commit; never repeat one back in the conversation.

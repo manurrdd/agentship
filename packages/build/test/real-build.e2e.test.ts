@@ -147,7 +147,7 @@ describe.skipIf(!enabled)('real builds', () => {
             version: 1,
             app: { name: 'Agentship Fixture' },
             stores: { apple: { bundleId: 'com.agentship.fixture', appId: 'unknown' } },
-            release: { version: '1.2.3', buildNumber: '45' },
+            release: { version: '1.2.3', buildNumber: '45', track: 'internal_testing' },
             build: { framework: 'flutter' },
             metadata: {
               primaryLocale: 'en-US',
@@ -180,7 +180,11 @@ function androidManifest(options: {
     version: 1,
     app: { name: 'Agentship Fixture' },
     stores: { google: { packageName: 'com.agentship.fixture' } },
-    release: { version: options.version, buildNumber: options.buildNumber },
+    release: {
+      version: options.version,
+      buildNumber: options.buildNumber,
+      track: 'internal_testing',
+    },
     build: {
       framework: options.framework ?? 'flutter',
       android: {

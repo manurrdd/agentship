@@ -240,6 +240,19 @@ async function integrationChecks(
       });
     }
 
+    // Agents without a skills directory have nothing to check — but silence would read as
+    // "skills are fine", so an informative ok check says why they do not apply.
+    if (!integration.supportsSkills) {
+      checks.push({
+        id: `skills:${record.agent}`,
+        title: `Skills for ${integration.name}`,
+        status: 'ok',
+        detail:
+          integration.skillsNote ??
+          'this agent has no skills directory Agentship knows of; skills do not apply',
+      });
+    }
+
     for (const skill of record.skills) {
       const state = await skillState(skill);
       const stale = record.agentshipVersion !== AGENTSHIP_VERSION;

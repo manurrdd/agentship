@@ -3,6 +3,7 @@ store: google
 entries:
   - id: google:create-app
     class: agent_browser
+    blockedBy: [google:account-and-payments]
     category: app_record
     title: Create the app in Play Console
     reason: >-
@@ -68,6 +69,7 @@ entries:
 
   - id: google:first-release
     class: agent_browser
+    blockedBy: [google:create-app]
     category: app_record
     title: Publish the first release from Play Console
     reason: >-
@@ -75,15 +77,27 @@ entries:
       has been published once, API uploads to a track are rejected.
     console:
       url: https://play.google.com/console
-      path: ['<your app>', Testing, Internal testing, Create new release]
+      path: ['<your app>', Testing, '{{release.trackLabel}}', Create new release]
     preconditions:
       - The app exists in Play Console.
       - The App content declarations and the content rating questionnaire are complete.
       - A signed app bundle exists; Agentship can build one with agentship_build.
     steps:
       - instruction: >-
-          Open Internal testing and press Create new release. If Play offers Play App
-          Signing, read the google:play-app-signing entry before accepting.
+          Open the testing page named {{field:track}} and press Create new release. If Play
+          offers Play App Signing, read the google:play-app-signing entry before accepting.
+        fields:
+          - name: track
+            label: Track
+            value: '{{release.trackLabel}}'
+            source: manifest.release.track
+            rationale: >-
+              The audience the manifest declares for this release. A closed test and an
+              internal test are different pages in Play Console, and the first release goes
+              to whichever one is opened here.
+            caution: >-
+              Play refuses a version code it has already seen, so a bundle uploaded to the
+              wrong track cannot simply be uploaded again to the right one.
       - instruction: >-
           Upload the bundle Agentship built and give the release a name. The version code
           inside the bundle is what every later API call addresses.
@@ -96,11 +110,13 @@ entries:
             caution: >-
               Play refuses a version code it has already seen, so the next release must use
               a higher one.
-      - instruction: Review the release and press Start rollout to Internal testing.
+      - instruction: Review the release and press Start rollout on that same page.
     verify:
       kind: api
-      summary: Agentship lists the tracks and finds a release serving a build.
+      summary: Agentship lists the tracks and finds the manifest's track serving a build.
       check: google:first-release-done
+      params:
+        track: '{{release.track}}'
     notes: >-
       After this, Agentship can take over: every later upload and track assignment goes
       through the API.
@@ -108,6 +124,7 @@ entries:
 
   - id: google:play-app-signing
     class: agent_browser
+    blockedBy: [google:create-app]
     category: credentials
     title: Enrol the app in Play App Signing
     reason: >-

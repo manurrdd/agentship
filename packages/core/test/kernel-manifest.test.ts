@@ -18,7 +18,7 @@ import { testManifest } from './kernel-helpers.js';
 
 function analysisFixture(): AppAnalysis {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     analyzedAt: '2026-08-03T00:00:00.000Z',
     root: '/repo',
     framework: { framework: 'flutter', confidence: 'certain', evidence: [] },
@@ -35,6 +35,7 @@ function analysisFixture(): AppAnalysis {
     permissions: { ios: [], android: [] },
     entitlements: [],
     privacySignals: [],
+    launchChecks: [],
     assets: { appIcons: [], screenshots: [], listingFiles: [] },
     buildHints: { appDir: '.' },
     warnings: [],
@@ -100,6 +101,62 @@ describe('manifest', () => {
     const written = await writeGeneratedManifest(repoRoot, analysisFixture());
     const loaded = await loadManifest(repoRoot);
     expect(loaded).toEqual(written.manifest);
+  });
+
+  it('carries the build number the project already declares', () => {
+    // Flutter writes `1.4.0+2` in pubspec.yaml, so the analyzer knows the build number and
+    // there is nothing to ask the user for. Without this the first build stops with
+    // "the manifest does not say release.buildNumber" for a value the repo states.
+    const analysis = analysisFixture();
+    const generated = manifestFromAnalysis({
+      ...analysis,
+      versions: {
+        ...analysis.versions,
+        buildNumber: provenanced('2', 'certain', 'pubspec.yaml'),
+      },
+    });
+    expect(generated.manifest.release.buildNumber).toBe('2');
+    expect(generated.gaps.map((gap) => gap.path)).not.toContain('release.buildNumber');
+  });
+
+  it('falls back to the Android version code, and omits what the project never states', () => {
+    const analysis = analysisFixture();
+    expect(
+      manifestFromAnalysis({
+        ...analysis,
+        versions: { ...analysis.versions, versionCode: provenanced(7, 'certain', 'build.gradle') },
+      }).manifest.release.buildNumber,
+    ).toBe('7');
+    // Absent from the project stays absent: an invented build number is uploaded under that
+    // name and burned forever.
+    expect(manifestFromAnalysis(analysis).manifest.release.buildNumber).toBeUndefined();
+  });
+
+  it('reveals the optional sections instead of leaving them undiscoverable', () => {
+    const analysis = analysisFixture();
+    const generated = manifestFromAnalysis({
+      ...analysis,
+      assets: {
+        ...analysis.assets,
+        listingFiles: [
+          'fastlane/metadata/en-US/description.txt',
+          'fastlane/metadata/es-ES/description.txt',
+          'fastlane/metadata/android/fr-FR/full_description.txt',
+        ],
+      },
+    });
+
+    // Commented, never filled in: each of these is a decision about money, a person or a
+    // product catalog.
+    expect(generated.yaml).toContain('# pricing:');
+    expect(generated.yaml).toContain('# review:');
+    expect(generated.yaml).toContain('# monetization:');
+    expect(generated.yaml).toContain('contactPhone');
+    // The locales the repository already has listing text for are named, not adopted.
+    expect(generated.yaml).toContain('listing text for: es-ES, fr-FR');
+    expect(Object.keys(generated.manifest.metadata.locales)).toEqual(['en-US']);
+    expect(generated.manifest.pricing).toBeUndefined();
+    expect(generated.manifest.review).toBeUndefined();
   });
 
   it('reports every sentinel through manifestGaps', () => {

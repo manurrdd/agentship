@@ -165,7 +165,7 @@ Builds are slow (minutes) and they execute this repository's own build scripts. 
       const outcome = await runBuild({
         repoRoot,
         platform,
-        profile: session.engine.profile,
+        profile: await session.engine.profileFor(repoRoot),
         manifest,
         logger: session.logger,
         ...(input.version === undefined ? {} : { version: input.version }),

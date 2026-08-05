@@ -36,6 +36,29 @@ describe('setup flows', () => {
     }
   });
 
+  it('offers a file path as the preferred way to hand over each secret', () => {
+    // The path fields keep the secret out of the conversation entirely; the inline
+    // fields remain the documented alternative.
+    const appleFields = setupFlow('apple').steps.flatMap((step) => step.collects ?? []);
+    const p8Path = appleFields.find((field) => field.name === 'privateKeyPath');
+    expect(p8Path?.kind).toBe('apple_p8_path');
+    expect(p8Path?.secret).toBe(false);
+    expect(p8Path?.help).toContain('Preferred');
+    expect(appleFields.some((field) => field.name === 'privateKeyPem')).toBe(true);
+
+    const googleFields = setupFlow('google').steps.flatMap((step) => step.collects ?? []);
+    const saPath = googleFields.find((field) => field.name === 'serviceAccountJsonPath');
+    expect(saPath?.kind).toBe('google_sa_json_path');
+    expect(saPath?.help).toContain('Preferred');
+  });
+
+  it('validates path fields for shape only; contents are validated after reading', () => {
+    expect(validateSetupValue('apple_p8_path', '/tmp/AuthKey_X.p8')).toEqual({ ok: true });
+    expect(validateSetupValue('apple_p8_path', '  ').ok).toBe(false);
+    expect(validateSetupValue('google_sa_json_path', '/tmp/sa.json')).toEqual({ ok: true });
+    expect(validateSetupValue('google_sa_json_path', '').ok).toBe(false);
+  });
+
   it('uses unique step ids and https console URLs', () => {
     for (const flow of setupFlows()) {
       const ids = flow.steps.map((s) => s.id);

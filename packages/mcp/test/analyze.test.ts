@@ -43,6 +43,13 @@ describe('agentship_analyze', () => {
     expect(analysis.framework.framework).toBe('flutter');
     expect(analysis.identity['bundleId']?.value).toBeDefined();
 
+    // Launch checks reach the agent through the summary: the core set plus what the
+    // detected SDKs make necessary, each with its source.
+    const launchChecks = (result.payload['analysis'] as Record<string, unknown>)[
+      'launchChecks'
+    ] as { id: string; claim: string; source: string }[];
+    expect(launchChecks.map((check) => check.id)).toContain('privacy-policy-published');
+
     const manifest = result.payload['manifest'] as {
       path: string;
       created: boolean;

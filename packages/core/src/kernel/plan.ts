@@ -12,7 +12,8 @@ import type { ActionClass, PendingOperation, Store } from '../types.js';
 import type { ActionDraft, DiffEntry, DifferProposals, DifferRegistry, LocalOp } from './differ.js';
 import { shortHash } from './hash.js';
 import type { AgentshipManifest } from './manifest.js';
-import { privacyLint } from './privacy.js';
+import type { PrivacyFinding } from './privacy.js';
+import { privacyLint, privacySnapshotLint } from './privacy.js';
 import { stateFingerprint } from './snapshot.js';
 import { AGENTSHIP_VERSION } from './version.js';
 
@@ -25,7 +26,8 @@ import { AGENTSHIP_VERSION } from './version.js';
  * and manifest reproduces every id bit-for-bit; any change — local edit or remote drift —
  * produces new ids, which is what invalidates stale approvals without bookkeeping.
  */
-export const RELEASE_PLAN_VERSION = 1;
+// v2: the plan carries structured privacy `findings` alongside the rendered warnings.
+export const RELEASE_PLAN_VERSION = 2;
 
 export interface PlannedAction {
   /** `<kind>:<target>:<hash16>` — readable, and self-invalidating on content change. */
@@ -78,6 +80,11 @@ export interface ReleasePlan {
   /** Ids of actions that require an approval before they can execute. */
   readonly approvalsRequired: readonly string[];
   readonly warnings: readonly string[];
+  /**
+   * The privacy findings behind the warnings, structured: code, severity, remediation.
+   * `warnings` renders them as strings; this is what a caller ranks by severity.
+   */
+  readonly findings: readonly PrivacyFinding[];
 }
 
 /** Everything the planner needs for one store. */
@@ -188,12 +195,20 @@ export async function buildPlan(input: BuildPlanInput): Promise<ReleasePlan> {
   // Privacy findings are plan-level warnings: they are about the declaration and the code,
   // not about any one action, and a plan that quietly dropped them would let a submission be
   // approved with a purpose string App Review rejects.
-  for (const finding of privacyLint(input.manifest, input.analysis)) {
-    warnings.push(`[${finding.code}] ${finding.message} → ${finding.remediation}`);
-  }
+  const findings: PrivacyFinding[] = [...privacyLint(input.manifest, input.analysis)];
 
   for (const storeInput of input.stores) {
     const { store, state, capabilities, knownPending } = storeInput;
+    // Snapshot-level privacy checks: what the code shows against what the store declares.
+    // Deliberately not gated on the declaration being confirmed — see privacySnapshotLint.
+    findings.push(
+      ...(await privacySnapshotLint({
+        repoRoot: input.repoRoot,
+        store,
+        state,
+        analysis: input.analysis,
+      })),
+    );
     snapshots[store] = {
       capturedAt: state.capturedAt,
       fingerprint: stateFingerprint(state),
@@ -306,6 +321,10 @@ export async function buildPlan(input: BuildPlanInput): Promise<ReleasePlan> {
       : { ...operation, blocking: [...new Set(blocked)].sort() };
   });
 
+  for (const finding of findings) {
+    warnings.push(`[${finding.code}] ${finding.message} → ${finding.remediation}`);
+  }
+
   const planId = `plan-${shortHash({ actions: ordered.map((action) => action.id).sort() })}`;
   return {
     schemaVersion: RELEASE_PLAN_VERSION,
@@ -320,6 +339,7 @@ export async function buildPlan(input: BuildPlanInput): Promise<ReleasePlan> {
       .filter((action) => action.classification === 'needs_approval')
       .map((action) => action.id),
     warnings,
+    findings,
   };
 }
 

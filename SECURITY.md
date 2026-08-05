@@ -19,9 +19,12 @@ regression in any of those attacks fails the build.
 - They are materialised for the length of a single store call — an Apple `.p8` becomes a
   `0600` file that is removed afterwards, a Play service account is passed the same way — and
   every value is registered with the redactor before it exists.
-- An agent never sees them. `agentship_configure_auth` collects values and stores them; every
-  response, log line, journal entry and error is scrubbed by shape and by literal, so a
-  credential that leaked into a build's stdout is redacted before it reaches a model.
+- An agent never sees them. `agentship_configure_auth` collects values and stores them; the
+  preferred hand-over is the *path* to the downloaded key file, which Agentship reads itself
+  so the secret never passes through the conversation (and it warns when that file is
+  group- or world-readable). Every response, log line, journal entry and error is scrubbed
+  by shape and by literal, so a credential that leaked into a build's stdout is redacted
+  before it reaches a model.
 - Agentship never asks anyone for a password, a two-factor code, or the login of a store
   account, and the skills instruct agents to refuse if a user offers one.
 

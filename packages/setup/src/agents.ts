@@ -38,6 +38,8 @@ export interface AgentDetection {
   readonly configPath: string;
   readonly supportsSkills: boolean;
   readonly skillsDir?: string;
+  /** Why skills are not installed for this agent, when they are not. */
+  readonly skillsNote?: string;
 }
 
 export interface McpRegistration {
@@ -80,6 +82,11 @@ interface AgentDefinition {
   readonly configPath: (env: IntegrationEnv) => string;
   /** Directory the agent loads Agent Skills from, when it supports them. */
   readonly skillsDir?: (env: IntegrationEnv) => string;
+  /**
+   * Why skills are not installed, for agents without a `skillsDir`. Honest about the state
+   * of knowledge: "no directory Agentship knows of" is not a claim the agent cannot do it.
+   */
+  readonly skillsNote?: string;
   /** Extra paths whose existence proves the agent is installed. */
   readonly markers: (env: IntegrationEnv) => readonly string[];
   /** Server entry as the agent expects it. */
@@ -121,6 +128,8 @@ const DEFINITIONS: readonly AgentDefinition[] = [
   {
     agent: 'cursor',
     name: 'Cursor',
+    skillsNote:
+      'This agent has no Agent Skills directory Agentship knows of (checked against its documentation when this integration was last verified), so the bundled skills are not installed; the MCP tool descriptions carry the essential guidance instead.',
     format: 'json',
     jsonKey: 'mcpServers',
     configPath: (env) => join(env.home, '.cursor', 'mcp.json'),
@@ -130,6 +139,8 @@ const DEFINITIONS: readonly AgentDefinition[] = [
   {
     agent: 'gemini-cli',
     name: 'Gemini CLI',
+    skillsNote:
+      'This agent has no Agent Skills directory Agentship knows of (checked against its documentation when this integration was last verified), so the bundled skills are not installed; the MCP tool descriptions carry the essential guidance instead.',
     format: 'json',
     jsonKey: 'mcpServers',
     configPath: (env) => join(env.home, '.gemini', 'settings.json'),
@@ -139,6 +150,8 @@ const DEFINITIONS: readonly AgentDefinition[] = [
   {
     agent: 'vscode',
     name: 'VS Code (Copilot)',
+    skillsNote:
+      'This agent has no Agent Skills directory Agentship knows of (checked against its documentation when this integration was last verified), so the bundled skills are not installed; the MCP tool descriptions carry the essential guidance instead.',
     format: 'json',
     jsonKey: 'servers',
     configPath: (env) => vscodeUserDir(env, 'mcp.json'),
@@ -159,6 +172,8 @@ export interface AgentIntegration {
   readonly agent: AgentId;
   readonly name: string;
   readonly supportsSkills: boolean;
+  /** Present exactly when `supportsSkills` is false: the honest reason why. */
+  readonly skillsNote?: string;
   skillsDir(env: IntegrationEnv): string | undefined;
   configPath(env: IntegrationEnv): string;
   detect(env: IntegrationEnv): Promise<AgentDetection>;
@@ -225,6 +240,7 @@ function createIntegration(definition: AgentDefinition): AgentIntegration {
     agent: definition.agent,
     name: definition.name,
     supportsSkills: definition.skillsDir !== undefined,
+    ...(definition.skillsNote === undefined ? {} : { skillsNote: definition.skillsNote }),
     skillsDir: (env) => definition.skillsDir?.(env),
     configPath: (env) => definition.configPath(env),
 
@@ -246,6 +262,9 @@ function createIntegration(definition: AgentDefinition): AgentIntegration {
         configPath: definition.configPath(env),
         supportsSkills: skills !== undefined,
         ...(skills === undefined ? {} : { skillsDir: skills }),
+        ...(skills !== undefined || definition.skillsNote === undefined
+          ? {}
+          : { skillsNote: definition.skillsNote }),
       };
     },
 

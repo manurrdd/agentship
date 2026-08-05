@@ -111,6 +111,18 @@ export const CatalogEntrySchema = z
       'other',
     ]),
     title: z.string().min(1),
+    /**
+     * `itinerary` (the default): part of the ordered path every first release walks.
+     * `contingency`: only applies when its situation occurs — a rejection, a transfer, a
+     * store holding an approved version — and must never be presented as a step to do next.
+     */
+    applicability: z.enum(['itinerary', 'contingency']).default('itinerary'),
+    /**
+     * Ids of entries that must be done before this one is actionable. Validated on load:
+     * every id must exist in the catalog. This is what lets a listing order the itinerary
+     * instead of presenting twelve steps as if they were all available today.
+     */
+    blockedBy: z.array(Id).default([]),
     /** The factual platform limitation. Never "Agentship does not support it". */
     reason: z.string().min(1),
     /**

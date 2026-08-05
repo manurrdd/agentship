@@ -74,6 +74,26 @@ describe('from signals to a proposal', () => {
     }
   });
 
+  it('warns about an ads SDK contradicting the store age rating, even while the declaration is a draft', async () => {
+    harness = await createMcpHarness({
+      stores: ['apple'],
+      manifest: manifestWith({ declarationStatus: 'draft', dataPractices: [] }, 'apple'),
+      // The store declares "no advertising" while the repository contains AdMob.
+      state: () => ({ ageRating: { id: 'ar-1', answers: { advertising: false } } }),
+    });
+    await withFixtureAnalysis(harness);
+
+    const planned = await harness.call('agentship_plan', { projectDir: harness.repoRoot });
+    const warnings = (planned.payload['plan'] as { warnings: string[] }).warnings.join('\n');
+    expect(warnings).toContain('ADS_SDK_VS_AGE_RATING');
+    expect(warnings).toContain('advertising: false');
+    // The warning is decoupled from the gate; the ACTION is not. A draft declaration still
+    // produces no set_age_rating.
+    expect(actionsOf(planned.payload).some((action) => action.kind === 'set_age_rating')).toBe(
+      false,
+    );
+  });
+
   it('warns on the plan about what the code shows and the declaration omits', async () => {
     harness = await createMcpHarness({
       stores: ['apple'],

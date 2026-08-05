@@ -15,6 +15,7 @@ import { detectFramework } from './detect.js';
 import { extractAndroid } from './extract-android.js';
 import { extractIos } from './extract-ios.js';
 import { extractProject } from './extract-project.js';
+import { deriveLaunchChecks } from './launch-checks.js';
 import { derivePrivacySignals } from './privacy.js';
 import { DEFAULT_LIMITS, RepoFs, type ScanLimits } from './repo-fs.js';
 import { type DependencySource, detectSdks } from './sdks.js';
@@ -197,6 +198,7 @@ export async function analyzeApp(root: string, options: AnalyzeOptions = {}): Pr
   const androidPermissions = android?.permissions ?? [];
   const entitlements: Entitlement[] = [...(ios?.entitlements ?? []), ...(android?.features ?? [])];
   const privacySignals = derivePrivacySignals(sdks, iosPermissions, androidPermissions);
+  const launchChecks = deriveLaunchChecks(sdks);
 
   const buildHints: BuildHints = {
     ...(ios === undefined ? {} : { ios: ios.buildHints }),
@@ -252,6 +254,7 @@ export async function analyzeApp(root: string, options: AnalyzeOptions = {}): Pr
     permissions: { ios: iosPermissions, android: androidPermissions },
     entitlements,
     privacySignals,
+    launchChecks,
     assets,
     buildHints,
     warnings: dedupeWarnings(dropResolved(warnings, identity, versions)),

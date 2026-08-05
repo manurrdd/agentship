@@ -3,6 +3,7 @@ store: google
 entries:
   - id: google:closed-track-setup
     class: agent_browser
+    blockedBy: [google:create-app]
     category: other
     title: Create a closed testing track and invite testers by e-mail
     reason: >-

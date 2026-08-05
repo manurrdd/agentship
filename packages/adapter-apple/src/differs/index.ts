@@ -1,6 +1,7 @@
 import type { PendingVerifier, ResourceDiffer } from '@agentship/core';
 import { appleBuildDiffer } from './build.js';
 import { appleMetadataDiffer } from './metadata.js';
+import { applePricingDiffer } from './pricing.js';
 import { applePrivacyDiffer } from './privacy.js';
 import { appleProductsDiffer } from './products.js';
 import { applePhasedReleaseDiffer, appleReleaseDiffer } from './release.js';
@@ -12,6 +13,7 @@ import { isEditable } from './version-state-rules.js';
 
 export { appleBuildDiffer } from './build.js';
 export { appleMetadataDiffer } from './metadata.js';
+export { applePricingDiffer } from './pricing.js';
 export { applePrivacyDiffer } from './privacy.js';
 export { appleProductsDiffer } from './products.js';
 export { applePhasedReleaseDiffer, appleReleaseDiffer, manualReleasePending } from './release.js';
@@ -43,6 +45,7 @@ export function appleDiffers(): readonly ResourceDiffer[] {
     appleVersionDiffer(),
     appleMetadataDiffer(),
     appleScreenshotsDiffer(),
+    applePricingDiffer(),
     appleProductsDiffer(),
     applePrivacyDiffer(),
     appleBuildDiffer(),
