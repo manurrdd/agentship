@@ -48,6 +48,7 @@ describe.skipIf(!enabled)('npm pack', () => {
         'package/skills/agentship-troubleshoot/SKILL.md',
         'package/tools.lock.json',
         'package/data/sdk-catalog.json',
+        'package/data/launch-checks.json',
         // The console catalog and the privacy taxonomies are runtime data too: without them
         // a published build would fail the moment an agent asked for console instructions.
         'package/data/apple/app-record.yaml',

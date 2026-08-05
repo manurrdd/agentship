@@ -141,9 +141,9 @@ describe('vertical slice', () => {
     // The console work happens (simulated), the pending is completed and verified…
     google.state.contentRatingDone = true;
     await harness.kernel.completePending('google:content-rating', 'Questionnaire submitted.');
-    const verification = await harness.kernel.verifyPending('google:content-rating');
-    expect(verification.verified).toBe(true);
-    expect(verification.operation.status).toBe('verified');
+    const [verification] = await harness.kernel.verifyPending(['google:content-rating']);
+    expect(verification?.verified).toBe(true);
+    expect(verification?.operation.status).toBe('verified');
 
     // …and the release converges after a fresh plan/approve/apply round (the submit's
     // content changed — the draft version now exists — so the old approval is stale).

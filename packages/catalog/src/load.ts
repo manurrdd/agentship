@@ -77,6 +77,19 @@ export function loadCatalog(): readonly CatalogEntryWithStore[] {
     }
     seen.add(entry.id);
   }
+  // blockedBy is a graph over the catalog itself; a dangling reference is a packaging bug
+  // and would silently drop an ordering an operator relies on.
+  for (const entry of all) {
+    for (const blocker of entry.blockedBy) {
+      if (!seen.has(blocker)) {
+        throw new AgentshipError(
+          ERROR_CODES.CONFIG_INVALID,
+          `Catalog entry "${entry.id}" is blockedBy unknown entry "${blocker}".`,
+          { details: { id: entry.id, blocker } },
+        );
+      }
+    }
+  }
   cache = all;
   return all;
 }

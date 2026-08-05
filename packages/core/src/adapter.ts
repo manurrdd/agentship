@@ -28,6 +28,7 @@ import type {
   ReleaseTrack,
   RemoteAppState,
   RemoteProduct,
+  SubmissionReadiness,
   SubmissionRef,
   SubmissionStatus,
 } from './store-state.js';
@@ -65,8 +66,17 @@ export interface AdapterContext {
   readonly dryRun?: boolean;
 }
 
-/** Result of a cheap credentials check, used by `doctor` and before any plan. */
+/**
+ * Result of a cheap credentials check, used by `doctor` and before any plan.
+ *
+ * `status` is the source of truth. `rejected` means the store itself refused the
+ * credential; `unverifiable` means the check could not be performed at all — a Google
+ * check without a package name, for instance — which must never be reported as a
+ * rejection. `ok` is kept as the boolean shorthand (`status === 'ok'`).
+ */
 export interface AuthCheckResult {
+  readonly status: 'ok' | 'rejected' | 'unverifiable';
+  /** Shorthand: `status === 'ok'`. */
   readonly ok: boolean;
   /** Account/team the credentials belong to, when the backend reports it. */
   readonly account?: string;
@@ -108,6 +118,19 @@ export interface StoreAdapter {
   checkAuth(context: AdapterContext, ref?: AppRef): Promise<AuthCheckResult>;
 
   listApps(context: AdapterContext): Promise<AppSummary[]>;
+
+  /**
+   * Resolves an app record from its bundle id, when the store can search by it.
+   *
+   * Optional because only Apple both needs it and can answer it: an App Store Connect app
+   * id is unknowable until the record exists, while a Google ref *is* the package name the
+   * manifest already holds. The kernel uses this to fill `stores.apple.appId` automatically
+   * instead of asking the user for a value the store would happily report.
+   */
+  findApp?(
+    context: AdapterContext,
+    bundleId: string,
+  ): Promise<{ readonly id: string; readonly name: string } | undefined>;
 
   /** Complete normalised snapshot. Read-only; safe to call at any time. */
   getAppState(context: AdapterContext, ref: AppRef): Promise<RemoteAppState>;
@@ -154,6 +177,20 @@ export interface StoreAdapter {
     ref: AppRef,
     submission: SubmissionRef,
   ): Promise<SubmissionStatus>;
+
+  /**
+   * Asks the store what still blocks this version from being submitted.
+   *
+   * Read-only and cheap — one call — and deliberately separate from
+   * {@link StoreAdapter.getAppState}: a snapshot describes what the store *holds*, this
+   * describes what the store *refuses*, and only the store knows the second. A platform
+   * without such an endpoint answers `supported: false` with the reason.
+   */
+  submissionReadiness(
+    context: AdapterContext,
+    ref: AppRef,
+    version: string,
+  ): Promise<SubmissionReadiness>;
 
   setPhasedRelease(
     context: AdapterContext,

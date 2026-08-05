@@ -1,7 +1,7 @@
 import type { AdapterContext, StoreAdapter } from '../adapter.js';
 import { AgentshipError, ERROR_CODES } from '../errors.js';
 import { optional } from '../optional.js';
-import type { AppRef } from '../store-state.js';
+import type { AppRef, SubmissionReadiness } from '../store-state.js';
 import type { PendingOperation, Store } from '../types.js';
 import { loadAnalysis } from './analysis-store.js';
 import { checkApprovals } from './approvals.js';
@@ -11,7 +11,7 @@ import { executePlan } from './executor.js';
 import { openJournal, readJournal, summarizeJournal } from './journal.js';
 import { acquireProjectLock } from './lock.js';
 import type { AgentshipManifest } from './manifest.js';
-import { isNeedsInput, loadManifest } from './manifest.js';
+import { isNeedsInput, loadManifest, setManifestValue } from './manifest.js';
 import type { PendingVerifierMap, VerifyPendingResult } from './pending.js';
 import {
   completePending,
@@ -95,13 +95,14 @@ export class Kernel {
   async plan(options: PlanOptions = {}): Promise<ReleasePlan> {
     const manifest = await loadManifest(this.repoRoot);
     const stores = this.selectStores(manifest, options.stores);
+    const refNotes: string[] = [];
     const inputs: StorePlanInput[] = [];
     for (const store of stores) {
       const adapter = this.adapter(store);
       const snapshot = await captureSnapshot(
         adapter,
         this.context,
-        this.ref(manifest, store),
+        await this.ensureRef(manifest, store, refNotes),
         this.repoRoot,
       );
       inputs.push({
@@ -113,13 +114,15 @@ export class Kernel {
       });
     }
     const analysis = await loadAnalysis(this.repoRoot);
-    const plan = await buildPlan({
+    const built = await buildPlan({
       repoRoot: this.repoRoot,
       manifest,
       registry: this.registry,
       stores: inputs,
       ...optional('analysis', analysis),
     });
+    const plan: ReleasePlan =
+      refNotes.length === 0 ? built : { ...built, warnings: [...built.warnings, ...refNotes] };
     await savePlan(this.repoRoot, plan);
     await mergePendingOperations(this.repoRoot, plan.pending);
     return plan;
@@ -163,7 +166,7 @@ export class Kernel {
         const snapshot = await captureSnapshot(
           adapter,
           this.context,
-          this.ref(manifest, store),
+          await this.ensureRef(manifest, store, warnings),
           this.repoRoot,
         );
         const planned = stored.snapshots[store];
@@ -261,7 +264,7 @@ export class Kernel {
     return captureSnapshot(
       this.adapter(store),
       this.context,
-      this.ref(manifest, store),
+      await this.ensureRef(manifest, store, []),
       this.repoRoot,
     );
   }
@@ -269,6 +272,32 @@ export class Kernel {
   /** Last persisted snapshot of one store, without touching the network. */
   async lastSnapshot(store: Store): Promise<StoredSnapshot | undefined> {
     return loadSnapshot(this.repoRoot, store);
+  }
+
+  /**
+   * What the store itself says still blocks a submission.
+   *
+   * Never throws: a readiness report is an *extra* opinion on top of the plan, so a store
+   * that cannot be reached (no app record yet, credentials for the other store only) must
+   * degrade to "could not ask" rather than fail the plan that carries it.
+   */
+  async submissionReadiness(store: Store): Promise<SubmissionReadiness> {
+    const manifest = await loadManifest(this.repoRoot);
+    try {
+      const ref = await this.ensureRef(manifest, store, []);
+      return await this.adapter(store).submissionReadiness(
+        this.context,
+        ref,
+        manifest.release.version,
+      );
+    } catch (error) {
+      return {
+        store,
+        supported: false,
+        reason: `Agentship could not ask the ${store} store: ${AgentshipError.is(error) ? error.message : String(error)}`,
+        blockers: [],
+      };
+    }
   }
 
   async listPending(): Promise<readonly PendingOperation[]> {
@@ -283,17 +312,33 @@ export class Kernel {
     return completePending(this.repoRoot, id, notes);
   }
 
-  async verifyPending(id: string): Promise<VerifyPendingResult> {
+  async verifyPending(
+    ids: readonly string[],
+    onProgress?: (message: string) => void | Promise<void>,
+  ): Promise<readonly VerifyPendingResult[]> {
     const manifest = await loadManifest(this.repoRoot);
-    const stores = this.selectStores(manifest);
+    // Only the stores the operations belong to need a ref: verifying a Google pending must
+    // not fail because the Apple half of the manifest still lacks its app id. Each id's
+    // store comes from the persisted operation, whose prefix ("apple:"/"google:") it echoes.
+    const operations = await Promise.all(ids.map(async (id) => getPending(this.repoRoot, id)));
+    const refs = new Map<Store, AppRef>();
+    for (const store of new Set(operations.map((operation) => operation.store))) {
+      if (!this.adapters.has(store)) continue;
+      try {
+        refs.set(store, await this.ensureRef(manifest, store, []));
+      } catch {
+        // No resolvable ref: verifyPending reports it gracefully instead of throwing.
+      }
+    }
     return verifyPending({
       repoRoot: this.repoRoot,
-      id,
+      ids,
       adapters: this.adapters,
       context: this.context,
-      refs: this.refs(manifest, stores),
+      refs,
       verifiers: this.verifiers,
       manifest,
+      ...(onProgress === undefined ? {} : { onProgress }),
     });
   }
 
@@ -343,6 +388,58 @@ export class Kernel {
 
   private refs(manifest: AgentshipManifest, stores: readonly Store[]): ReadonlyMap<Store, AppRef> {
     return new Map(stores.map((store) => [store, this.ref(manifest, store)]));
+  }
+
+  /**
+   * The ref for one store, resolving a missing Apple app id from the store itself.
+   *
+   * An App Store Connect app id is a fact the store already knows — asking the user for it
+   * when the bundle id is in the manifest and credentials are configured is pure friction.
+   * So when `stores.apple.appId` is absent (or still the sentinel) and the adapter can
+   * search by bundle id, the kernel looks it up once, persists it into the manifest with a
+   * provenance comment, and reports what it did through `notes`. No network is touched when
+   * the app id is already present, and an empty or failed lookup falls back to the original
+   * `PLAN_INPUT_REQUIRED` — whose remediation is then genuinely the right next step.
+   */
+  private async ensureRef(
+    manifest: AgentshipManifest,
+    store: Store,
+    notes: string[],
+  ): Promise<AppRef> {
+    if (store === 'apple') {
+      const apple = manifest.stores.apple;
+      if (
+        apple !== undefined &&
+        !isNeedsInput(apple.bundleId) &&
+        (apple.appId === undefined || isNeedsInput(apple.appId))
+      ) {
+        const adapter = this.adapters.get('apple');
+        if (adapter?.findApp !== undefined) {
+          let found: { id: string; name: string } | undefined;
+          try {
+            found = await adapter.findApp(this.context, apple.bundleId);
+          } catch {
+            // Unreachable store or missing credentials: fall through to the normal error,
+            // whose remediation tells the user what to fill in by hand.
+            found = undefined;
+          }
+          if (found !== undefined) {
+            const date = new Date().toISOString().slice(0, 10);
+            await setManifestValue(
+              this.repoRoot,
+              ['stores', 'apple', 'appId'],
+              found.id,
+              ` resolved from App Store Connect by bundle id ${apple.bundleId} on ${date}`,
+            );
+            apple.appId = found.id;
+            notes.push(
+              `Resolved stores.apple.appId to ${found.id} ("${found.name}") from App Store Connect by bundle id ${apple.bundleId}, and saved it to .agentship/agentship.yaml.`,
+            );
+          }
+        }
+      }
+    }
+    return this.ref(manifest, store);
   }
 
   private ref(manifest: AgentshipManifest, store: Store): AppRef {

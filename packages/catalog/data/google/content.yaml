@@ -3,6 +3,7 @@ store: google
 entries:
   - id: google:content-rating
     class: agent_browser
+    blockedBy: [google:create-app]
     category: content_rating
     title: Complete the IARC content rating questionnaire
     reason: >-
@@ -46,6 +47,7 @@ entries:
 
   - id: google:app-content
     class: agent_browser
+    blockedBy: [google:create-app]
     category: privacy
     title: Complete the App content declarations
     reason: >-

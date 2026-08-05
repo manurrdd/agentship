@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   appleMetadataDiffer,
   applePhasedReleaseDiffer,
+  applePricingDiffer,
   appleReleaseDiffer,
   appleReviewDiffer,
   appleTestFlightDiffer,
@@ -314,5 +315,65 @@ describe('apple/release and apple/phased-release', () => {
     });
     // Already rolling out: Apple raises the percentage itself, so there is nothing to do.
     expect((await runDiffer(applePhasedReleaseDiffer(), manifest, running)).drafts).toEqual([]);
+  });
+});
+
+describe('apple/pricing', () => {
+  it('emits nothing when the manifest declares no pricing', async () => {
+    const state = await stateOf('apple');
+    expect((await runDiffer(applePricingDiffer(), manifestFor(), state)).drafts).toEqual([]);
+  });
+
+  it('proposes set_pricing when the declared price differs from the store', async () => {
+    const manifest = manifestFor({ pricing: { amount: '3.99', baseTerritory: 'USA' } });
+    const state = await stateOf('apple', { pricing: { free: true } });
+    const draft = only((await runDiffer(applePricingDiffer(), manifest, state)).drafts);
+    expect(draft.kind).toBe('set_pricing');
+    expect(draft.operation).toBe('setPricing');
+    expect(draft.op).toMatchObject({
+      op: 'set_pricing',
+      schedule: { amount: '3.99', baseTerritory: 'USA' },
+    });
+    expect(draft.diff).toEqual([
+      { path: 'pricing.amount', after: '3.99', note: 'base territory USA' },
+    ]);
+  });
+
+  it('shows before and after when the store already has a price', async () => {
+    const manifest = manifestFor({ pricing: { amount: '4.99', baseTerritory: 'USA' } });
+    const state = await stateOf('apple', { pricing: { free: false, amount: '3.99' } });
+    const draft = only((await runDiffer(applePricingDiffer(), manifest, state)).drafts);
+    expect(draft.diff[0]).toMatchObject({ path: 'pricing.amount', before: '3.99', after: '4.99' });
+  });
+
+  it('converges: an equal price produces no draft', async () => {
+    const manifest = manifestFor({ pricing: { amount: '3.99' } });
+    const state = await stateOf('apple', { pricing: { free: false, amount: '3.99' } });
+    expect((await runDiffer(applePricingDiffer(), manifest, state)).drafts).toEqual([]);
+    const free = manifestFor({ pricing: { free: true } });
+    const freeState = await stateOf('apple', { pricing: { free: true } });
+    expect((await runDiffer(applePricingDiffer(), free, freeState)).drafts).toEqual([]);
+  });
+
+  it('refuses to act on a pricing gap: unknown is not absent', async () => {
+    const manifest = manifestFor({ pricing: { amount: '3.99' } });
+    const base = await stateOf('apple');
+    const state = {
+      ...base,
+      pricing: undefined,
+      gaps: [
+        ...base.gaps,
+        { area: 'pricing', reason: 'the credentials cannot read pricing', kind: 'error' as const },
+      ],
+    };
+    expect((await runDiffer(applePricingDiffer(), manifest, state)).drafts).toEqual([]);
+  });
+
+  it('reports a sentinel amount as needs_input instead of guessing', async () => {
+    const manifest = manifestFor({ pricing: { amount: '<needs_input>' } });
+    const state = await stateOf('apple', { pricing: { free: true } });
+    const draft = only((await runDiffer(applePricingDiffer(), manifest, state)).drafts);
+    expect(draft.op).toBeUndefined();
+    expect(draft.needsInput).toContain('pricing.amount');
   });
 });

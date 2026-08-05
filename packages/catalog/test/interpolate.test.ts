@@ -67,7 +67,7 @@ describe('the context a template may see', () => {
     app: { name: 'Lumo' },
     credentials: { profile: 'work' },
     stores: { apple: { bundleId: 'com.acme.lumo' } },
-    release: { version: '1.0.0' },
+    release: { version: '1.0.0', track: 'internal_testing' },
     metadata: {
       primaryLocale: 'en-US',
       locales: { 'en-US': { name: 'Lumo', description: NEEDS_INPUT } },

@@ -42,7 +42,8 @@ Requires Node 20+ on macOS or Linux. Building an `.ipa` also requires macOS with
 
 > The review was rejected — what do I do?
 
-You never type an API key into a chat, and you never approve "everything": the agent shows
+You never type an API key into a chat — you hand Agentship the path to the downloaded key
+file and it reads the file itself — and you never approve "everything": the agent shows
 you one change at a time, with the exact before and after.
 
 ## What is automatic and what is not
@@ -65,6 +66,27 @@ Agentship keeps the desired state of your release in `.agentship/agentship.yaml`
 the analysis of your repository. It is yours: commit it, edit it, and let the agent fill the
 gaps it marks. Everything Agentship does is the difference between that file and what the
 stores currently hold.
+
+## CI / non-interactive
+
+No keyring and no questions: export the credentials as environment variables and every
+Agentship command and tool works as-is.
+
+```bash
+# Apple — an App Store Connect team API key
+export AGENTSHIP_APPLE_KEY_ID=ABCD1234EF
+export AGENTSHIP_APPLE_ISSUER_ID=69a6de70-03db-47e3-e053-5b8c7c11a4d1
+export AGENTSHIP_APPLE_P8_PATH=/secrets/AuthKey_ABCD1234EF.p8   # or AGENTSHIP_APPLE_P8 with the PEM itself
+
+# Google — a Play service-account key
+export AGENTSHIP_GOOGLE_SA_JSON_PATH=/secrets/play-publisher.json  # or AGENTSHIP_GOOGLE_SA_JSON with the JSON itself
+```
+
+Three rules, fixed on purpose: the environment always wins over the keyring (a pipeline
+must never silently pick up a developer's stored credentials); each store's group is all
+or nothing (a half-set group is an error, not a fallback); and the environment fallback is
+profile-agnostic — a CI job runs one identity, whatever profile is selected.
+`agentship_setup_status` reports `source: "env"` when this path is active.
 
 ## Security in five lines
 

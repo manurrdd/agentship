@@ -5,6 +5,7 @@ export {
   envConfigured,
   GOOGLE_ENV,
   googleFromEnv,
+  readCredentialFile,
 } from './env.js';
 export { assertNoSecretEnv, withAppleKeyFile, withGoogleServiceAccountFile } from './keyfile.js';
 export { accountName, keyringAvailable, type SecretKind } from './keyring.js';

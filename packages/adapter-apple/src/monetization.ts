@@ -104,6 +104,13 @@ function toOffers(resources: readonly JsonApiResource[]): RemoteProductOffer[] {
       ...optional('mode', OFFER_MODE_BY_APPLE[attrString(resource, 'offerMode') ?? '']),
       ...optional('duration', attrString(resource, 'duration')),
       ...optional('periods', attrNumber(resource, 'numberOfPeriods')),
+      // The territory is read from the resource itself — its relationship or attribute —
+      // never decoded out of the base64 offer id, which is an implementation detail of
+      // Apple's ids and not a contract.
+      ...optional(
+        'territory',
+        relatedId(resource, 'territory') ?? attrString(resource, 'territory'),
+      ),
     }))
     .sort((a, b) => a.id.localeCompare(b.id));
 }

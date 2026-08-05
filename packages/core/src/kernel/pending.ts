@@ -173,60 +173,123 @@ export interface VerifyPendingResult {
   readonly detail: string;
 }
 
+/** One id's fate, decided before any store is read: either already settled, or a check to run. */
+type PlannedVerification =
+  | {
+      readonly operation: PendingOperation;
+      readonly settled: VerifyPendingResult;
+      readonly verifier?: undefined;
+    }
+  | {
+      readonly operation: PendingOperation;
+      readonly verifier: PendingVerifier;
+      readonly settled?: undefined;
+    };
+
 /**
- * Verifies a completed pending operation against the store.
+ * Verifies completed pending operations against the store.
  *
- * Requires a fresh `getAppState` call — never a cached snapshot — because the whole point
- * is to observe what the console work actually produced. Operations without a registered
- * check stay `done`: honesty over optimism.
+ * Verification needs a fresh `getAppState` call — never a cached snapshot — because the whole
+ * point is to observe what the console work actually produced. That snapshot is also the
+ * expensive part: it is a dozen store calls, and Google serialises them per package, so
+ * verifying three operations one call at a time meant three full snapshots queued behind each
+ * other with nothing to show for minutes. Hence a batch: **one snapshot per store**, shared by
+ * every operation of that store, and none captured at all when nothing in the batch has a
+ * verifier to run.
+ *
+ * Operations without a registered check stay `done`: honesty over optimism.
  */
 export async function verifyPending(options: {
   readonly repoRoot: string;
-  readonly id: string;
+  readonly ids: readonly string[];
   readonly adapters: ReadonlyMap<Store, StoreAdapter>;
   readonly context: AdapterContext;
   readonly refs: ReadonlyMap<Store, AppRef>;
   readonly verifiers: PendingVerifierMap;
   readonly manifest: AgentshipManifest;
-}): Promise<VerifyPendingResult> {
-  const operation = await getPending(options.repoRoot, options.id);
-  const checkId = operation.verification?.check;
-  if (checkId === undefined) {
-    return {
-      operation,
-      verified: false,
-      detail: 'This operation declares no automatic verification; confirm it manually.',
-    };
+  /** Called as the batch advances, so a long snapshot is not silence. */
+  readonly onProgress?: (message: string) => void | Promise<void>;
+}): Promise<readonly VerifyPendingResult[]> {
+  const report = async (message: string): Promise<void> => {
+    await options.onProgress?.(message);
+  };
+
+  /** What each id needs, decided before anything is captured. */
+  const planned: readonly PlannedVerification[] = await Promise.all(
+    options.ids.map(async (id): Promise<PlannedVerification> => {
+      const operation = await getPending(options.repoRoot, id);
+      const checkId = operation.verification?.check;
+      if (checkId === undefined) {
+        return {
+          operation,
+          settled: {
+            operation,
+            verified: false,
+            detail: 'This operation declares no automatic verification; confirm it manually.',
+          },
+        };
+      }
+      const verifier = options.verifiers.get(checkId);
+      if (verifier === undefined) {
+        return {
+          operation,
+          settled: {
+            operation,
+            verified: false,
+            detail: `No verifier is registered for check "${checkId}".`,
+          },
+        };
+      }
+      if (!options.adapters.has(operation.store) || !options.refs.has(operation.store)) {
+        return {
+          operation,
+          settled: {
+            operation,
+            verified: false,
+            detail: `No adapter or app reference is configured for the ${operation.store} store.`,
+          },
+        };
+      }
+      return { operation, verifier };
+    }),
+  );
+
+  // One snapshot per store, captured only for the stores something still needs.
+  const stores = [
+    ...new Set(
+      planned.filter((one) => one.verifier !== undefined).map((one) => one.operation.store),
+    ),
+  ];
+  const states = new Map<Store, RemoteAppState>();
+  for (const store of stores) {
+    await report(`reading the ${store} store once for every operation in this batch`);
+    const adapter = options.adapters.get(store) as StoreAdapter;
+    const ref = options.refs.get(store) as AppRef;
+    states.set(store, await adapter.getAppState(options.context, ref));
   }
-  const verifier = options.verifiers.get(checkId);
-  if (verifier === undefined) {
-    return {
-      operation,
-      verified: false,
-      detail: `No verifier is registered for check "${checkId}".`,
-    };
+
+  const results: VerifyPendingResult[] = [];
+  for (const [index, one] of planned.entries()) {
+    if (one.verifier === undefined) {
+      results.push(one.settled);
+      continue;
+    }
+    await report(`verifying ${one.operation.id} (${index + 1}/${planned.length})`);
+    const state = states.get(one.operation.store) as RemoteAppState;
+    const verified = await one.verifier(one.operation, state, {
+      repoRoot: options.repoRoot,
+      manifest: options.manifest,
+    });
+    if (!verified) {
+      results.push({
+        operation: one.operation,
+        verified: false,
+        detail: 'The store does not yet reflect this operation.',
+      });
+      continue;
+    }
+    const updated = await transition(options.repoRoot, one.operation.id, 'verified');
+    results.push({ operation: updated, verified: true, detail: 'Verified against the store.' });
   }
-  const adapter = options.adapters.get(operation.store);
-  const ref = options.refs.get(operation.store);
-  if (adapter === undefined || ref === undefined) {
-    return {
-      operation,
-      verified: false,
-      detail: `No adapter or app reference is configured for the ${operation.store} store.`,
-    };
-  }
-  const state = await adapter.getAppState(options.context, ref);
-  const verified = await verifier(operation, state, {
-    repoRoot: options.repoRoot,
-    manifest: options.manifest,
-  });
-  if (!verified) {
-    return {
-      operation,
-      verified: false,
-      detail: 'The store does not yet reflect this operation.',
-    };
-  }
-  const updated = await transition(options.repoRoot, options.id, 'verified');
-  return { operation: updated, verified: true, detail: 'Verified against the store.' };
+  return results;
 }

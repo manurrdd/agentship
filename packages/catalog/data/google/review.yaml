@@ -3,6 +3,7 @@ store: google
 entries:
   - id: google:managed-publishing
     class: agent_browser
+    applicability: contingency
     category: review
     title: Publish the staged changes in Play Console
     reason: >-
@@ -40,6 +41,7 @@ entries:
 
   - id: google:policy-rejection
     class: agent_browser
+    applicability: contingency
     category: review
     title: Read and answer a Play policy rejection
     reason: >-

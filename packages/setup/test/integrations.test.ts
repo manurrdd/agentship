@@ -175,4 +175,17 @@ describe('agent integrations', () => {
     expect(byAgent.get('claude-code')?.supportsSkills).toBe(true);
     expect(byAgent.get('cursor')?.supportsSkills).toBe(false);
   });
+
+  it('says why skills are not installed for agents without a skills directory', async () => {
+    context = await createTestEnv({});
+    const detections = await detectAgents(context.env);
+    const byAgent = new Map(detections.map((detection) => [detection.agent, detection]));
+    for (const agent of ['cursor', 'gemini-cli', 'vscode'] as const) {
+      expect(byAgent.get(agent)?.supportsSkills).toBe(false);
+      // Honest about the state of knowledge, never "the agent cannot do it".
+      expect(byAgent.get(agent)?.skillsNote).toContain('no Agent Skills directory');
+      expect(agentIntegration(agent).skillsNote).toContain('MCP tool descriptions');
+    }
+    expect(byAgent.get('claude-code')?.skillsNote).toBeUndefined();
+  });
 });

@@ -31,6 +31,7 @@ import {
   type RemoteProduct,
   type ScreenshotPlan,
   type StoreAdapter,
+  type SubmissionReadiness,
   type SubmissionRef,
   type SubmissionSpec,
   type SubmissionStatus,
@@ -43,6 +44,7 @@ import { GOOGLE_CAPABILITIES, GOOGLE_PENDING_OPERATIONS } from './capabilities.j
 import { GoogleClient } from './client.js';
 import { type CommitFlags, gpcCommands } from './commands.js';
 import { GOOGLE_TOOL } from './environment.js';
+import { parseGpcFailure } from './errors.js';
 import {
   convertGooglePrice,
   createGoogleProduct,
@@ -139,7 +141,10 @@ export class GoogleAdapter implements StoreAdapter {
   async checkAuth(context: AdapterContext, ref?: AppRef): Promise<AuthCheckResult> {
     await this.#ensureVersion(context);
     if (ref === undefined) {
+      // Not a rejection: the check simply cannot be performed without an app. Reporting
+      // "the store rejected it" here would blame a credential nobody has tested.
       return {
+        status: 'unverifiable',
         ok: false,
         detail:
           'Google Play has no account-level endpoint, so credentials can only be verified against a specific app. Supply a package name.',
@@ -149,9 +154,27 @@ export class GoogleAdapter implements StoreAdapter {
       this.#client.runRaw(context, gpcCommands.tracksList(ref.id)),
     );
     if (result.exitCode !== 0) {
-      return { ok: false, detail: firstLine(result.stderr) };
+      // An app-not-found answer is authenticated: Play only says "no such app" to a caller
+      // whose credentials it accepted (an invalid key fails with an auth error instead).
+      // The credential works; the app is just not created or not linked to this service
+      // account yet — so this is a working credential with an unverifiable target, never a
+      // rejection.
+      const failure = parseGpcFailure(result.stderr);
+      if (failure.code === 'API_APP_NOT_FOUND') {
+        return {
+          status: 'ok',
+          ok: true,
+          detail: `Google Play accepted the service account, but has no app named ${ref.id} visible to it yet — create the app in Play Console (or grant the service account access to it), then verify again.`,
+        };
+      }
+      return { status: 'rejected', ok: false, detail: firstLine(result.stderr) };
     }
-    return { ok: true, account: ref.id, detail: 'Google Play accepted the service account.' };
+    return {
+      status: 'ok',
+      ok: true,
+      account: ref.id,
+      detail: 'Google Play accepted the service account.',
+    };
   }
 
   /**
@@ -289,6 +312,29 @@ export class GoogleAdapter implements StoreAdapter {
     return this.#client.withPackageLock(ref.id, () =>
       getGoogleSubmissionStatus(this.#client, context, ref, submission),
     );
+  }
+
+  /**
+   * Play has no pre-submission readiness endpoint.
+   *
+   * `gpc validate` checks a *bundle file* — signing, permissions, size — which is a different
+   * question from "would Play accept this release". What Play refuses is reported when the
+   * edit is committed, and the App content answers behind most refusals have no read API at
+   * all (see the state gaps). Saying so is the honest answer; an empty list of blockers would
+   * read as "nothing is wrong".
+   */
+  async submissionReadiness(
+    _context: AdapterContext,
+    _ref: AppRef,
+    _version: string,
+  ): Promise<SubmissionReadiness> {
+    return {
+      store: 'google',
+      supported: false,
+      reason:
+        'Google Play exposes no pre-submission readiness check: refusals surface when the edit is committed, and the App content declarations behind most of them cannot be read back at all.',
+      blockers: [],
+    };
   }
 
   async setPhasedRelease(

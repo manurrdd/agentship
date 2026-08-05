@@ -72,13 +72,37 @@ function analysisFacts(analysis: AppAnalysis): Record<string, unknown> {
   };
 }
 
+/**
+ * How each track is named on the page an operator has to open.
+ *
+ * Both consoles group testing by audience and label the pages in these words, so an entry
+ * that has to say "open the X page" can say it from the manifest instead of hard-coding one
+ * track. The manifest value (`closed_testing`) is what Agentship reasons with; this is what
+ * the console shows, and sending an operator to a page that does not exist under that name
+ * is how a first release lands on the wrong track.
+ */
+const TRACK_LABELS: Readonly<Record<string, string>> = {
+  internal_testing: 'Internal testing',
+  closed_testing: 'Closed testing',
+  open_testing: 'Open testing',
+  production: 'Production',
+};
+
 export function catalogContext(input: CatalogContextInput = {}): CatalogContext {
   const out: Record<string, ContextValue> = {};
   if (input.manifest !== undefined) flatten(input.manifest, 'manifest', out);
   if (input.analysis !== undefined) flatten(analysisFacts(input.analysis), 'analysis', out);
   if (input.privacy !== undefined) flatten(input.privacy, 'privacy', out);
   if (input.product !== undefined) flatten(input.product, 'product', out);
-  if (input.release !== undefined) flatten(input.release, 'release', out);
+  if (input.release !== undefined) {
+    const track = input.release['track'];
+    const label = typeof track === 'string' ? TRACK_LABELS[track] : undefined;
+    flatten(
+      { ...input.release, ...(label === undefined ? {} : { trackLabel: label }) },
+      'release',
+      out,
+    );
+  }
   return out;
 }
 

@@ -276,6 +276,8 @@ export interface RemoteProductOffer {
   readonly periods?: number;
   readonly price?: string;
   readonly state?: string;
+  /** Territory the offer applies in, when the store scopes offers per territory (Apple). */
+  readonly territory?: string;
 }
 
 /**
@@ -403,4 +405,34 @@ export interface SubmissionRef {
    */
   readonly synthetic: boolean;
   readonly submittedAt?: string;
+}
+
+/** One thing the store itself says is wrong or missing before a version can be submitted. */
+export interface SubmissionBlocker {
+  /** The store's own code, e.g. `review_details.missing`. Stable enough to match on. */
+  readonly code: string;
+  readonly severity: 'error' | 'warning' | 'info';
+  /** The store considers this reason enough to refuse the submission. */
+  readonly blocking: boolean;
+  readonly message: string;
+  readonly remediation?: string;
+}
+
+/**
+ * What the store says still stands between a version and review.
+ *
+ * Agentship's own readiness is derived from the plan: it knows what the manifest asks for
+ * and what the snapshot shows, so it can only ever report the gaps it was told to look for.
+ * The store knows the rest — a missing reviewer phone number, a screenshot in a size that
+ * is no longer accepted, a build that has not finished processing — and answers in one
+ * call. Where a platform has no such endpoint the answer is `supported: false` with the
+ * reason, never an empty list, because "nothing to report" and "nobody asked" must not
+ * look the same.
+ */
+export interface SubmissionReadiness {
+  readonly store: Store;
+  readonly supported: boolean;
+  /** Why the store could not answer, when `supported` is false. */
+  readonly reason?: string;
+  readonly blockers: readonly SubmissionBlocker[];
 }

@@ -31,7 +31,7 @@ function manifestWith(privacy: Record<string, unknown> | undefined) {
     version: 1,
     app: { name: 'Lumo' },
     stores: { apple: { bundleId: 'com.acme.lumo', appId: 'app-1' } },
-    release: { version: '1.0.0' },
+    release: { version: '1.0.0', track: 'internal_testing' },
     metadata: {
       primaryLocale: 'en-US',
       locales: {
@@ -183,7 +183,7 @@ describe('privacyLint', () => {
       version: 1,
       app: { name: 'Lumo' },
       stores: { google: { packageName: 'com.acme.lumo' } },
-      release: { version: '1.0.0' },
+      release: { version: '1.0.0', track: 'internal_testing' },
       metadata: { primaryLocale: 'en-US', locales: { 'en-US': { name: 'Lumo' } } },
       privacy: {
         declarationStatus: 'confirmed',

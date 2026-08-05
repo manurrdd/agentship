@@ -3,6 +3,7 @@ store: google
 entries:
   - id: google:pricing-and-countries
     class: agent_browser
+    blockedBy: [google:create-app]
     category: pricing
     title: Set the app price and the countries it is available in
     reason: >-

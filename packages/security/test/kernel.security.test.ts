@@ -29,7 +29,7 @@ describe('a tampered analysis.json never crashes the kernel', () => {
     // The exact payload that used to throw "privacySignals is not iterable" during plan.
     const repo = await repoWithAnalysis(
       JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: 2,
         permissions: { ios: 'not-an-array' },
         privacySignals: 42,
         sdks: [],
@@ -47,7 +47,7 @@ describe('a tampered analysis.json never crashes the kernel', () => {
   it('keeps a valid analysis, preserving fields the schema does not model', async () => {
     const repo = await repoWithAnalysis(
       JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: 2,
         analyzedAt: 'now',
         root: '/some/repo',
         framework: { framework: 'flutter', confidence: 'high', evidence: [] },
@@ -66,6 +66,7 @@ describe('a tampered analysis.json never crashes the kernel', () => {
             evidence: [],
           },
         ],
+        launchChecks: [],
         assets: { appIcons: [], screenshots: [], listingFiles: [] },
         buildHints: { appDir: '.' },
         warnings: [],

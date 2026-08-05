@@ -72,6 +72,19 @@ describe('Flutter', () => {
     expect(admob?.implications?.join(' ')).toMatch(/App Tracking Transparency/);
   });
 
+  it('derives launch checks from the core set and the detected SDKs', async () => {
+    const analysis = await analyze('flutter-app');
+    const ids = analysis.launchChecks.map((check) => check.id);
+    // The constant core applies to every app.
+    expect(ids).toContain('privacy-policy-published');
+    // AdMob is detected in this fixture, so its checks ride along, source attached.
+    expect(ids).toContain('admob:app-ads-txt');
+    const appAds = analysis.launchChecks.find((check) => check.id === 'admob:app-ads-txt');
+    expect(appAds?.source).toBe('admob');
+    // No check without a trigger: nothing from SDKs the fixture does not declare.
+    expect(ids.some((id) => id.startsWith('supabase:'))).toBe(false);
+  });
+
   it('flags a declared permission whose purpose string is empty', async () => {
     const analysis = await analyze('flutter-app');
     const warning = analysis.warnings.find((w) => w.code === 'MISSING_USAGE_DESCRIPTION');
@@ -241,7 +254,7 @@ describe('result contract', () => {
       const json = JSON.stringify(analysis);
       expect(JSON.parse(json), name).toEqual(analysis);
       expect(json.length, name).toBeLessThan(200_000);
-      expect(analysis.schemaVersion).toBe(1);
+      expect(analysis.schemaVersion).toBe(2);
       expect(Date.parse(analysis.analyzedAt)).not.toBeNaN();
       expect(analysis.stats.filesScanned).toBeGreaterThan(0);
     }

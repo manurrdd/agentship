@@ -1,9 +1,20 @@
-import { AGENTSHIP_VERSION, agentshipHome, STORES, type Store } from '@agentship/core';
+import { stat } from 'node:fs/promises';
+import {
+  AGENTSHIP_VERSION,
+  type AppRef,
+  type AuthCheckResult,
+  agentshipHome,
+  isNeedsInput,
+  loadManifest,
+  STORES,
+  type Store,
+} from '@agentship/core';
 import {
   CREDENTIAL_ENV_VARS,
   credentialSource,
   listProfiles,
   parseServiceAccountJson,
+  readCredentialFile,
   type SetupField,
   setCredentials,
   setupFlow,
@@ -21,11 +32,16 @@ import { verifyInstall } from '@agentship/toolchain';
 import { z } from 'zod';
 import { mockStoresEnabled } from '../engine.js';
 import { ok } from '../format.js';
+import type { Session } from '../session.js';
 import { DETAIL_DESCRIPTION, type ToolDefinition } from './types.js';
 
 const statusSchema = z.object({
   detail: z.enum(['concise', 'full']).optional().describe(DETAIL_DESCRIPTION),
 });
+
+/** Note shown whenever credentials come from the environment, so precedence is never a surprise. */
+const ENV_SOURCE_NOTE =
+  'Credentials come from environment variables (the CI path). They always take precedence over anything stored in the OS keyring, and the environment fallback is profile-agnostic: whatever profile is selected, these are the credentials that will be used.';
 
 export const setupStatusTool: ToolDefinition = {
   name: 'agentship_setup_status',
@@ -54,7 +70,22 @@ A store with no credentials only blocks that store: the other one can still be p
     }));
 
     const profiles = await listProfiles();
-    const profile = session.engine.profile;
+    // The effective profile of the active project: manifest.credentials.profile is honoured
+    // once a project is known; before that, the session-level profile stands.
+    const sessionProfile = session.engine.profile;
+    const profile =
+      session.projectDir === undefined
+        ? sessionProfile
+        : await session.engine.profileFor(session.projectDir);
+    const warnings: string[] = [];
+    if (session.projectDir !== undefined) {
+      const manifestProfile = await session.engine.manifestProfile(session.projectDir);
+      if (manifestProfile !== undefined && manifestProfile !== sessionProfile) {
+        warnings.push(
+          `The session profile ("${sessionProfile}") and the manifest's credentials.profile ("${manifestProfile}") differ; the effective profile for this project is "${profile}".`,
+        );
+      }
+    }
     const metadata = profiles.find((entry) => entry.profile === profile);
     const credentials: Record<string, unknown> = {};
     for (const store of STORES) {
@@ -68,6 +99,7 @@ A store with no credentials only blocks that store: the other one can still be p
         ...(store === 'google' && metadata?.google !== undefined
           ? { clientEmail: metadata.google.clientEmail, projectId: metadata.google.projectId }
           : {}),
+        ...(source === 'env' ? { note: ENV_SOURCE_NOTE } : {}),
         ...(source === 'none'
           ? {
               howToConfigure: `Call agentship_configure_auth with store "${store}".`,
@@ -82,9 +114,19 @@ A store with no credentials only blocks that store: the other one can still be p
     for (const record of installed.agents) {
       const integration = agentIntegrations().find((entry) => entry.agent === record.agent);
       const check = await integration?.check(env);
-      const skills: Record<string, unknown>[] = [];
-      for (const skill of record.skills) {
-        skills.push({ name: skill.name, state: await skillState(skill) });
+      // An agent without a skills directory gets an honest "unsupported" plus the reason,
+      // never an empty list that reads as "skills were forgotten".
+      let skills: unknown;
+      let skillsNote: string | undefined;
+      if (integration !== undefined && !integration.supportsSkills) {
+        skills = 'unsupported';
+        skillsNote = integration.skillsNote;
+      } else {
+        const entries: Record<string, unknown>[] = [];
+        for (const skill of record.skills) {
+          entries.push({ name: skill.name, state: await skillState(skill) });
+        }
+        skills = entries;
       }
       agents.push({
         agent: record.agent,
@@ -95,6 +137,7 @@ A store with no credentials only blocks that store: the other one can still be p
         method: record.mcp?.method,
         agentshipVersion: record.agentshipVersion,
         skills,
+        ...(skillsNote === undefined ? {} : { skillsNote }),
       });
     }
 
@@ -107,6 +150,7 @@ A store with no credentials only blocks that store: the other one can still be p
       tools,
       credentials,
       agents,
+      ...(warnings.length === 0 ? {} : { warnings }),
       ...(detail === 'full'
         ? { detectedAgents: await detectAgents(env), doctor }
         : {
@@ -125,7 +169,7 @@ const configureSchema = z.object({
     .record(z.string(), z.string())
     .optional()
     .describe(
-      'Values the user handed over, keyed by field name (apple: keyId, issuerId, privateKeyPem, optional keyName; google: serviceAccountJson). Omit to get the guided flow. Secrets are stored in the OS keyring and never echoed back.',
+      'Values the user handed over, keyed by field name (apple: keyId, issuerId, privateKeyPath OR privateKeyPem, optional keyName; google: serviceAccountJsonPath OR serviceAccountJson). Prefer the *Path variants: Agentship reads the file itself and the secret never enters the conversation. Omit to get the guided flow. Secrets are stored in the OS keyring and never echoed back.',
     ),
   profile: z.string().optional().describe('Credential profile. Defaults to the session profile.'),
   verify: z
@@ -140,6 +184,27 @@ function requiredFields(store: Store): readonly SetupField[] {
     .filter((field) => field.required);
 }
 
+/** The path field each store accepts, and the inline field its contents fill. */
+const PATH_FIELDS: Readonly<Record<Store, { path: string; inline: string; what: string }>> = {
+  apple: {
+    path: 'privateKeyPath',
+    inline: 'privateKeyPem',
+    what: 'App Store Connect private key',
+  },
+  google: {
+    path: 'serviceAccountJsonPath',
+    inline: 'serviceAccountJson',
+    what: 'Google service-account key',
+  },
+};
+
+/** The effective profile for a configure call: explicit arg, then project manifest, then session. */
+async function effectiveProfile(session: Session, explicit: string | undefined): Promise<string> {
+  if (explicit !== undefined) return explicit;
+  if (session.projectDir !== undefined) return session.engine.profileFor(session.projectDir);
+  return session.engine.profile;
+}
+
 export const configureAuthTool: ToolDefinition = {
   name: 'agentship_configure_auth',
   title: 'Configure store credentials',
@@ -149,16 +214,18 @@ Called without "values" it returns the exact flow for that store: prerequisites,
 
 Called with "values" it validates each value (key format, PEM curve, service-account JSON shape), stores the secret in the OS keyring, and optionally proves it works with one real store call. Nothing is echoed back: the response reports field names and status only.
 
+The preferred way to hand over the secret is a file path: apple.privateKeyPath (the downloaded .p8) or google.serviceAccountJsonPath (the downloaded .json). Agentship reads the file itself, so the key never passes through the conversation. Pasting the contents (privateKeyPem / serviceAccountJson) remains the alternative.
+
 This is the one place where asking the user for a secret is correct. Anywhere else in the conversation, do not ask for keys, passwords or tokens — and never write them into files or into the manifest.
 
-Apple needs: keyId, issuerId, privateKeyPem (the whole .p8 file), optionally keyName. Google needs: serviceAccountJson (the whole file). Partial submissions are rejected with the list of what is still missing — collect them all from one console visit.`,
+Apple needs: keyId, issuerId, privateKeyPath or privateKeyPem, optionally keyName. Google needs: serviceAccountJsonPath or serviceAccountJson. Partial submissions are rejected with the list of what is still missing — collect them all from one console visit.`,
   schema: configureSchema,
   annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: true },
 
   async handler(session, args) {
     const input = configureSchema.parse(args);
     const store = input.store;
-    const profile = input.profile ?? session.engine.profile;
+    const profile = await effectiveProfile(session, input.profile);
     const flow = setupFlow(store);
     const source = await credentialSource(store, { profile });
 
@@ -175,18 +242,43 @@ Apple needs: keyId, issuerId, privateKeyPem (the whole .p8 file), optionally key
           multiline: field.multiline,
           ...(field.help === undefined ? {} : { help: field.help }),
         })),
-        nextStep: `Walk the user through flow.steps, collect every required field, then call agentship_configure_auth again with values for store "${store}".`,
+        nextStep: `Walk the user through flow.steps, collect every required field (prefer the file-path fields, so the secret never enters the conversation), then call agentship_configure_auth again with values for store "${store}".`,
       });
+    }
+
+    const warnings: string[] = [];
+    const notes: string[] = [];
+    const values: Record<string, string> = { ...input.values };
+
+    // A file path is the preferred hand-over: read it here, then validate the contents
+    // exactly as if they had been pasted. The path itself is never stored.
+    const pathField = PATH_FIELDS[store];
+    const givenPath = values[pathField.path];
+    if (givenPath !== undefined && givenPath.trim() !== '') {
+      if (values[pathField.inline] !== undefined) {
+        warnings.push(
+          `Both ${pathField.path} and ${pathField.inline} were provided; the file at ${pathField.path} wins.`,
+        );
+      }
+      values[pathField.inline] = await readCredentialFile(givenPath, store, pathField.what);
+      const info = await stat(givenPath).catch(() => undefined);
+      // Group- or world-readable key material is a real finding, reported with the exact fix.
+      if (info !== undefined && (info.mode & 0o077) !== 0) {
+        warnings.push(
+          `The key file at ${givenPath} is readable by other users of this machine (mode ${(info.mode & 0o777).toString(8)}). Tighten it with: chmod 600 ${givenPath}`,
+        );
+      }
+      delete values[pathField.path];
     }
 
     const fields = setupFlow(store)
       .steps.flatMap((step) => step.collects ?? [])
-      .filter((field) => input.values?.[field.name] !== undefined || field.required);
+      .filter((field) => values[field.name] !== undefined || field.required);
 
     const invalid: { field: string; message: string }[] = [];
     const missing: string[] = [];
     for (const field of fields) {
-      const value = input.values[field.name];
+      const value = values[field.name];
       if (value === undefined || value.trim() === '') {
         if (field.required) missing.push(field.name);
         continue;
@@ -207,7 +299,6 @@ Apple needs: keyId, issuerId, privateKeyPem (the whole .p8 file), optionally key
       });
     }
 
-    const values = input.values;
     if (store === 'apple') {
       await setCredentials(
         {
@@ -228,17 +319,38 @@ Apple needs: keyId, issuerId, privateKeyPem (the whole .p8 file), optionally key
       );
     }
 
+    if (givenPath !== undefined && givenPath.trim() !== '') {
+      notes.push(
+        `The secret is now in the OS keyring; the source file at ${givenPath} is no longer needed by Agentship. Recommend the user delete it, or at least keep it chmod 600.`,
+      );
+    }
+
     let authCheck: Record<string, unknown> | undefined;
+    let status: AuthCheckResult['status'] | undefined;
     if (input.verify !== false) {
-      const adapters = await session.engine.adapters(session.projectDir ?? process.cwd());
+      const projectDir = session.projectDir ?? process.cwd();
+      const adapters = await session.engine.adapters(projectDir);
       const adapter = adapters.get(store);
+      // Google can only be verified against a specific app: pass the manifest's package
+      // name when the session has a project that declares one.
+      let ref: AppRef | undefined;
+      if (store === 'google' && session.projectDir !== undefined) {
+        const manifest = await loadManifest(session.projectDir).catch(() => undefined);
+        const packageName = manifest?.stores.google?.packageName;
+        if (packageName !== undefined && !isNeedsInput(packageName)) {
+          ref = { store: 'google', id: packageName, bundleId: packageName, platform: 'android' };
+        }
+      }
       try {
-        const result = await adapter?.checkAuth(
-          session.engine.context(session.projectDir ?? process.cwd()),
-        );
-        authCheck = result === undefined ? undefined : { ...result };
+        const result = await adapter?.checkAuth(session.engine.context(projectDir, profile), ref);
+        if (result !== undefined) {
+          status = result.status;
+          authCheck = { ...result };
+        }
       } catch (error) {
+        status = 'unverifiable';
         authCheck = {
+          status: 'unverifiable',
           ok: false,
           detail:
             error instanceof Error
@@ -253,14 +365,30 @@ Apple needs: keyId, issuerId, privateKeyPem (the whole .p8 file), optionally key
       profile,
       stored: true,
       storedFields: fields.map((field) => field.name),
+      ...(warnings.length === 0 ? {} : { warnings }),
+      ...(notes.length === 0 ? {} : { notes }),
       ...(authCheck === undefined ? {} : { authCheck }),
-      nextStep:
-        authCheck?.['ok'] === false
-          ? 'Report the verification failure and its detail to the user; the credential is stored but the store rejected it.'
-          : 'Credentials are ready. Continue with agentship_plan.',
+      nextStep: nextStepForAuthCheck(store, status),
     });
   },
 };
+
+/**
+ * Three different messages for three different outcomes. In particular, `unverifiable`
+ * must never read as "the store rejected it": nothing was tested against the store.
+ */
+function nextStepForAuthCheck(store: Store, status: AuthCheckResult['status'] | undefined): string {
+  switch (status) {
+    case 'rejected':
+      return 'Report the verification failure and its detail to the user: the credential is stored, but the store rejected it. Walk through the flow again or check the troubleshooting entries.';
+    case 'unverifiable':
+      return store === 'google'
+        ? 'The credential is stored but could not be verified — Google Play only answers for a specific app, and none was available. It is NOT rejected. To verify it, analyze a project whose manifest declares stores.google.packageName (or create the app in Play Console first), then call agentship_setup_status.'
+        : 'The credential is stored but could not be verified (see authCheck.detail for why). It is NOT rejected; fix the stated obstacle and verify again with agentship_setup_status.';
+    default:
+      return 'Credentials are ready. Continue with agentship_plan.';
+  }
+}
 
 const doctorSchema = z.object({});
 

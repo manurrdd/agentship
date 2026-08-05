@@ -12,7 +12,7 @@ import type { Provenanced } from './types.js';
  * 2. What cannot be determined is absent. The analyzer never invents identifiers,
  *    versions or names.
  */
-export const APP_ANALYSIS_VERSION = 1;
+export const APP_ANALYSIS_VERSION = 2;
 
 export type Framework =
   | 'flutter'
@@ -91,6 +91,22 @@ export interface DetectedSdk {
   readonly evidence: readonly Evidence[];
   /** Why it matters for publishing, e.g. "requires IAP products configured in the store". */
   readonly implications?: readonly string[];
+}
+
+/**
+ * A verifiable claim about the launch that lives outside the stores.
+ *
+ * Agentship only reminds: the agent checks the claim or does the work with its own tools,
+ * and the user may dismiss any check with a reason. Never a gate — no plan is blocked by
+ * one, and Agentship never verifies them itself.
+ */
+export interface LaunchCheck {
+  /** Stable id, `<sdkId>:<checkId>` for SDK-triggered checks, bare for the core set. */
+  readonly id: string;
+  /** The claim, phrased so an agent can check it, e.g. "app-ads.txt is published and resolves". */
+  readonly claim: string;
+  /** What triggered it: `core` for the constant set, otherwise the detected SDK id. */
+  readonly source: string;
 }
 
 export interface IosPermission {
@@ -227,6 +243,7 @@ export interface AppAnalysis {
   };
   readonly entitlements: readonly Entitlement[];
   readonly privacySignals: readonly PrivacySignal[];
+  readonly launchChecks: readonly LaunchCheck[];
   readonly assets: AssetInventory;
   readonly buildHints: BuildHints;
   readonly warnings: readonly AnalysisWarning[];
@@ -257,6 +274,7 @@ export const AppAnalysisSchema = z.looseObject({
   }),
   entitlements: z.array(z.unknown()),
   privacySignals: z.array(z.looseObject({ dataType: z.string(), sdkIds: z.array(z.string()) })),
+  launchChecks: z.array(z.looseObject({ id: z.string(), claim: z.string(), source: z.string() })),
   assets: z.looseObject({
     appIcons: z.array(z.unknown()),
     screenshots: z.array(z.unknown()),

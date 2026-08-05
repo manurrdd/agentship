@@ -127,7 +127,29 @@ describe('checkAuth', () => {
       const { adapter: google } = adapter([versionRoute()]);
       const result = await google.checkAuth(testContext());
       expect(result.ok).toBe(false);
+      // Unverifiable, never rejected: nothing was tested against the store.
+      expect(result.status).toBe('unverifiable');
       expect(result.detail).toContain('no account-level endpoint');
+    });
+  });
+
+  it('treats an app-not-found answer as working credentials, not a rejection', async () => {
+    await withGoogleEnvironment(async () => {
+      const { adapter: google } = adapter([
+        versionRoute(),
+        {
+          match: 'tracks list',
+          exitCode: 4,
+          stderr:
+            'Error [API_APP_NOT_FOUND]: No application was found for the given package name.\nSuggestion: Check the package name.',
+        },
+      ]);
+      const result = await google.checkAuth(testContext(), APP);
+      // Play only answers "no such app" to an authenticated caller; a bad key fails with
+      // an auth error instead. The credential works — the app is not linked yet.
+      expect(result.status).toBe('ok');
+      expect(result.ok).toBe(true);
+      expect(result.detail).toContain('create the app in Play Console');
     });
   });
 

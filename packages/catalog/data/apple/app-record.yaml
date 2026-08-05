@@ -3,6 +3,7 @@ store: apple
 entries:
   - id: apple:create-app-record
     class: agent_browser
+    blockedBy: [apple:developer-enrollment]
     category: app_record
     title: Create the app record in App Store Connect
     reason: >-
@@ -76,6 +77,7 @@ entries:
 
   - id: apple:app-transfer
     class: agent_browser
+    applicability: contingency
     category: other
     title: Transfer the app to another App Store Connect account
     reason: >-

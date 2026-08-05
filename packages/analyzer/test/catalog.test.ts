@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  deriveLaunchChecks,
   detectSdks,
   loadAndroidRequirements,
+  loadCoreLaunchChecks,
   loadSdkCatalog,
   requiredTargetSdk,
   sdkCatalogLastVerified,
@@ -61,6 +63,39 @@ describe('SDK catalog', () => {
 
   it('records when it was last checked against the ecosystems', () => {
     expect(sdkCatalogLastVerified()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it('keeps launch check ids well-formed and unique within each entry', () => {
+    for (const entry of loadSdkCatalog()) {
+      const checks = entry.launchChecks ?? [];
+      expect(new Set(checks.map((check) => check.id)).size, entry.id).toBe(checks.length);
+      for (const check of checks) {
+        expect(check.id, entry.id).toMatch(/^[a-z0-9-]+$/);
+        expect(check.claim.length, `${entry.id}:${check.id}`).toBeGreaterThan(20);
+      }
+    }
+  });
+});
+
+describe('launch checks', () => {
+  it('always carries the core set, with unique ids', () => {
+    const core = loadCoreLaunchChecks();
+    expect(core.length).toBeGreaterThan(2);
+    expect(new Set(core.map((check) => check.id)).size).toBe(core.length);
+  });
+
+  it('composes core plus detected-SDK checks, sources attached', () => {
+    const none = deriveLaunchChecks([]);
+    expect(none.every((check) => check.source === 'core')).toBe(true);
+
+    const sdks = detectSdks([
+      { ecosystem: 'pub', names: ['google_mobile_ads'], file: 'pubspec.yaml' },
+    ]);
+    const checks = deriveLaunchChecks(sdks);
+    const appAds = checks.find((check) => check.id === 'admob:app-ads-txt');
+    expect(appAds?.source).toBe('admob');
+    // The core set is still there, untouched by what was detected.
+    expect(checks.filter((check) => check.source === 'core')).toEqual(none);
   });
 });
 

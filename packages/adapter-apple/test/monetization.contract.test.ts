@@ -61,6 +61,8 @@ describe('reading a product', () => {
           mode: 'free_trial',
           duration: 'ONE_MONTH',
           periods: 1,
+          // Read from the resource's territory relationship, never decoded out of the id.
+          territory: 'USA',
         },
       ]);
       expect(runner.commands().some((command) => command.startsWith('web'))).toBe(false);

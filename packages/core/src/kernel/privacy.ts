@@ -1,5 +1,8 @@
 import { z } from 'zod';
 import type { AppAnalysis, PrivacyDataType } from '../analysis.js';
+import type { RemoteAppState } from '../store-state.js';
+import type { Store } from '../types.js';
+import { DATA_SAFETY_ARCHIVE, lastArchivedDeclaration } from './archive.js';
 import type { AgentshipManifest } from './manifest.js';
 
 /**
@@ -223,6 +226,8 @@ export interface PrivacyFinding {
   readonly message: string;
   /** What to do about it, phrased for an agent to relay. */
   readonly remediation: string;
+  /** Store the finding is about; absent when it concerns the declaration itself. */
+  readonly store?: Store;
 }
 
 /**
@@ -336,6 +341,97 @@ export function privacyLint(
       remediation:
         'Add metadata.locales.<locale>.privacyPolicyUrl pointing at a page that actually resolves.',
     });
+  }
+
+  return findings;
+}
+
+/**
+ * Checks what the repository shows against what the store (or Agentship's archive of its own
+ * writes) currently declares — independently of the declaration gate.
+ *
+ * The gate in the privacy differs is about *acting*: nothing is drafted while the
+ * declaration is a draft. But a contradiction between the code and the store is worth
+ * saying out loud even then — an AdMob SDK next to an age rating that declares
+ * `advertising: false` is exactly the mismatch App Review rejects, and waiting for the
+ * user to confirm the whole declaration before mentioning it would hide the finding at the
+ * moment it is most useful. The `set_age_rating` action itself still requires the
+ * confirmed declaration; only the warning is decoupled.
+ *
+ * Google's side is narrower because the Play API is: neither "contains ads" nor the live
+ * Data Safety form can be read back, so the only honest comparison is against the copy
+ * Agentship archived after its own last apply.
+ */
+export async function privacySnapshotLint(options: {
+  readonly repoRoot: string;
+  readonly store: Store;
+  readonly state: RemoteAppState;
+  readonly analysis: AppAnalysis | undefined;
+}): Promise<readonly PrivacyFinding[]> {
+  const { analysis, state, store } = options;
+  if (analysis === undefined) return [];
+  const findings: PrivacyFinding[] = [];
+  const adsSdks = analysis.sdks.filter((sdk) => sdk.categories.includes('ads'));
+
+  if (store === 'apple' && state.ageRating !== undefined) {
+    const declared = state.ageRating.answers['advertising'];
+    if (adsSdks.length > 0 && declared === false) {
+      findings.push({
+        store,
+        code: 'ADS_SDK_VS_AGE_RATING',
+        severity: 'warning',
+        message: `The repository contains an advertising SDK (${adsSdks.map((sdk) => sdk.name).join(', ')}), but the App Store age rating declares advertising: false.`,
+        remediation:
+          'Either the SDK is present but unused — confirm that with the user — or the age rating is wrong. Confirm the privacy declaration and approve the set_age_rating action to correct it.',
+      });
+    }
+    if (adsSdks.length === 0 && declared === true) {
+      findings.push({
+        store,
+        code: 'AGE_RATING_ADS_WITHOUT_SDK',
+        severity: 'warning',
+        message:
+          'The App Store age rating declares advertising: true, but no advertising SDK was found in the repository.',
+        remediation:
+          'If the app no longer shows ads, correct the age rating (confirm the privacy declaration and approve the set_age_rating action); if it shows ads without a known SDK, the analysis simply cannot see it.',
+      });
+    }
+  }
+
+  if (store === 'google') {
+    const applied = await lastArchivedDeclaration(options.repoRoot, DATA_SAFETY_ARCHIVE);
+    // Play exposes no GET for "contains ads" or Data Safety, so the only comparable record
+    // is the declaration Agentship itself last applied. No archive, no claim.
+    if (applied !== undefined) {
+      const adIdPermission = analysis.permissions.android.some((permission) =>
+        permission.name.endsWith('permission.AD_ID'),
+      );
+      const declaresAdvertising = applied.summary.some((line) =>
+        /purposes=[^,]*advertising/i.test(line),
+      );
+      if ((adsSdks.length > 0 || adIdPermission) && !declaresAdvertising) {
+        const evidence = [
+          ...adsSdks.map((sdk) => sdk.name),
+          ...(adIdPermission ? ['the AD_ID permission'] : []),
+        ].join(', ');
+        findings.push({
+          code: 'ADS_SDK_VS_DATA_SAFETY',
+          severity: 'warning',
+          message: `The repository shows advertising signals (${evidence}), but the Data Safety declaration Agentship last applied on ${applied.appliedAt} declares no advertising purpose. Play cannot report the live form, so this compares against Agentship's own archived copy.`,
+          remediation:
+            'Re-run the privacy proposal, confirm the declaration with the user, and apply the corrected Data Safety form — or confirm the SDK is present but unused.',
+        });
+      }
+      if (adsSdks.length === 0 && !adIdPermission && declaresAdvertising) {
+        findings.push({
+          code: 'DATA_SAFETY_ADS_WITHOUT_SDK',
+          severity: 'warning',
+          message: `The Data Safety declaration Agentship last applied on ${applied.appliedAt} declares an advertising purpose, but no advertising SDK or AD_ID permission was found in the repository.`,
+          remediation:
+            'If the app no longer collects data for advertising, correct the declaration and re-apply the Data Safety form.',
+        });
+      }
+    }
   }
 
   return findings;

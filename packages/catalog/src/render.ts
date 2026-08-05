@@ -78,6 +78,27 @@ function renderFields(
   return fields;
 }
 
+/**
+ * Resolves the console path, so navigation can depend on the project.
+ *
+ * A path is a sequence of things to click, which makes it data an operator reads — the same
+ * category as a field value, and resolved with the same rules. It is deliberately not an
+ * instruction: the ban on templates in instruction text is about *guidance*, and a page name
+ * is not guidance. Without this a catalog entry has to hard-code one track, which is how the
+ * first release of an app whose manifest says `closed_testing` ends up on Internal testing.
+ */
+function renderPath(
+  entry: CatalogEntryWithStore,
+  context: CatalogContext,
+  missing: string[],
+): string[] {
+  return entry.console.path.map((segment) => {
+    const resolved = resolveTemplate(segment, context);
+    for (const path of resolved.missing) if (!missing.includes(path)) missing.push(path);
+    return resolved.text;
+  });
+}
+
 function renderSteps(entry: CatalogEntryWithStore): string[] {
   const steps: string[] = [];
   for (const precondition of entry.preconditions) {
@@ -138,7 +159,7 @@ export function renderCatalogPending(
     actionClass: entry.class,
     console: {
       url: entry.console.url,
-      ...(entry.console.path.length === 0 ? {} : { path: entry.console.path }),
+      ...(entry.console.path.length === 0 ? {} : { path: renderPath(entry, context, missing) }),
       lastVerified: entry.lastVerified,
     },
     steps: [...renderSteps(entry), ...(options.extraSteps ?? [])],

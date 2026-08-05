@@ -932,6 +932,26 @@ export const ascCommands = {
   ],
 
   /**
+   * `asc validate` — the canonical pre-submission readiness report, per its own help.
+   *
+   * It answers what no diff can: metadata length limits, required localizations, reviewer
+   * details, primary category, whether the build is attached and processed, encryption and
+   * content-rights declarations, pricing and territories, screenshot presence *and accepted
+   * sizes*, subscription review readiness, age rating completeness. Every one of those is a
+   * rejection Agentship would otherwise discover at submission.
+   */
+  validate: (options: { appId: string; version: string; platform: AscPlatform }): string[] => [
+    'validate',
+    '--app',
+    options.appId,
+    '--version',
+    options.version,
+    '--platform',
+    options.platform,
+    ...JSON_OUTPUT,
+  ],
+
+  /**
    * `--all-none` sets every answer to its safe default in one call, which is the only way to
    * make an age rating edit deterministic: without it, a partial edit leaves whatever the
    * previous questionnaire said in the untouched fields.

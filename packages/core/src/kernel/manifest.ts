@@ -1,5 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises';
-import { Document, parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import { Document, parseDocument, parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod';
 import type { AppAnalysis } from '../analysis.js';
 import { AgentshipError, ERROR_CODES } from '../errors.js';
@@ -201,9 +201,13 @@ export const ManifestSchema = z
       .object({
         version: NonSentinel,
         buildNumber: NonSentinel.optional(),
-        track: z
-          .enum(['internal_testing', 'closed_testing', 'open_testing', 'production'])
-          .default('internal_testing'),
+        /**
+         * Which audience the release reaches. Required, and deliberately without a default:
+         * a track Agentship picked silently is a track nobody ever reads, and the first
+         * release of a new app is exactly where the wrong one costs the most — Play burns
+         * the version code, and the testers waiting on another track see nothing.
+         */
+        track: z.enum(['internal_testing', 'closed_testing', 'open_testing', 'production']),
         /**
          * How the version reaches users once it is approved. `manual` is the default
          * because it is the only strategy where a human decides the moment of publication.
@@ -367,6 +371,54 @@ export async function saveManifest(repoRoot: string, manifest: AgentshipManifest
   return path;
 }
 
+/**
+ * Sets one value in the manifest file, preserving every existing comment.
+ *
+ * Unlike {@link saveManifest}, which serialises a parsed object and therefore drops the
+ * `# inferred` / `# needs_input` annotations, this edits the YAML document in place. It is
+ * how machine-derived facts — an App Store Connect app id resolved from the bundle id, a
+ * value adopted from the store — land in the file with a provenance comment a human can
+ * audit, instead of appearing out of nowhere.
+ *
+ * The result is validated against the schema before it is written, so a bad value can
+ * never corrupt the manifest on disk.
+ */
+export async function setManifestValue(
+  repoRoot: string,
+  path: readonly (string | number)[],
+  value: unknown,
+  comment?: string,
+): Promise<string> {
+  const filePath = manifestPath(repoRoot);
+  let raw: string;
+  try {
+    raw = await readFile(filePath, 'utf8');
+  } catch (cause) {
+    throw AgentshipError.from(
+      ERROR_CODES.CONFIG_NOT_FOUND,
+      `No manifest found at ${filePath}.`,
+      cause,
+    );
+  }
+  const doc = parseDocument(raw);
+  // createNode: a raw scalar cannot carry a comment; a Node can.
+  doc.setIn(path, doc.createNode(value));
+  if (comment !== undefined) {
+    const node = doc.getIn(path, true) as { comment?: string } | undefined;
+    if (node !== undefined && typeof node === 'object') node.comment = comment;
+  }
+  const result = ManifestSchema.safeParse(doc.toJS());
+  if (!result.success) {
+    throw new AgentshipError(
+      ERROR_CODES.CONFIG_MANIFEST_INVALID,
+      `Setting ${path.join('.')} would make ${filePath} invalid.`,
+      { details: { issues: z.treeifyError(result.error) } },
+    );
+  }
+  await writeFile(filePath, doc.toString(), { mode: FILE_MODE });
+  return filePath;
+}
+
 /** One value the user still has to provide before the affected section can be planned. */
 export interface ManifestGap {
   /** Dot path inside the manifest, e.g. `metadata.locales.en-US.description`. */
@@ -446,6 +498,7 @@ export function manifestFromAnalysis(analysis: AppAnalysis): GeneratedManifest {
     analysis.versions.marketingVersion ?? analysis.versions.versionName,
     'marketing version, e.g. 1.0.0',
   );
+  const buildNumber = buildNumberFromAnalysis(analysis);
 
   const doc = new Document({
     version: MANIFEST_VERSION,
@@ -457,6 +510,9 @@ export function manifestFromAnalysis(analysis: AppAnalysis): GeneratedManifest {
     },
     release: {
       version: version.value,
+      // Omitted when the project does not declare one: a build number Agentship invented
+      // would be uploaded under that name and burned forever.
+      ...(buildNumber === undefined ? {} : { buildNumber: buildNumber.value }),
       track: 'internal_testing',
       strategy: 'manual',
     },
@@ -479,7 +535,12 @@ export function manifestFromAnalysis(analysis: AppAnalysis): GeneratedManifest {
   if (ios) comment(doc, ['stores', 'apple', 'bundleId'], bundleId.comment);
   if (android) comment(doc, ['stores', 'google', 'packageName'], packageName.comment);
   comment(doc, ['release', 'version'], version.comment);
-  comment(doc, ['release', 'track'], ' inferred — safe default; change to reach users');
+  if (buildNumber !== undefined) comment(doc, ['release', 'buildNumber'], buildNumber.comment);
+  comment(
+    doc,
+    ['release', 'track'],
+    ' proposal — the first release goes here: internal_testing, closed_testing, open_testing or production',
+  );
   comment(doc, ['metadata', 'primaryLocale'], ' inferred — default');
   comment(
     doc,
@@ -493,9 +554,94 @@ export function manifestFromAnalysis(analysis: AppAnalysis): GeneratedManifest {
   );
   comment(doc, ['metadata', 'locales', 'en-US', 'description'], ' needs_input: store description');
 
-  const yaml = doc.toString();
+  const yaml = `${doc.toString()}${optionalSections(analysis)}`;
   const manifest = ManifestSchema.parse(parseYaml(yaml));
   return { manifest, yaml, gaps: manifestGaps(manifest) };
+}
+
+/** Store listing locales the repository already has text for, e.g. `fastlane/metadata/es-ES/`. */
+function listingLocales(analysis: AppAnalysis): string[] {
+  const locales = new Set<string>();
+  for (const file of analysis.assets.listingFiles) {
+    // `fastlane/metadata/<locale>/x.txt` and `fastlane/metadata/android/<locale>/x.txt`.
+    const match = /fastlane\/metadata\/(?:android\/)?([a-z]{2}(?:-[A-Za-z]{2,4})?)\//.exec(file);
+    if (match?.[1] !== undefined) locales.add(match[1]);
+  }
+  return [...locales].sort();
+}
+
+/**
+ * The sections Agentship understands but will not write for anyone, listed as comments.
+ *
+ * A generated manifest is also the only documentation an agent reads: a section that is not
+ * in the file does not exist as far as the next tool call is concerned. Leaving pricing,
+ * reviewer details and monetisation out entirely is what makes an agent conclude Agentship
+ * cannot do them and go and do them by hand — while the schema, the differs and both
+ * adapters have supported them all along.
+ *
+ * Comments rather than values, because every one of them is a decision: what the app costs,
+ * whose phone number reaches review, which products exist. Proposing `free: true` would be
+ * inventing an answer to a question about someone's money.
+ */
+function optionalSections(analysis: AppAnalysis): string {
+  const extraLocales = listingLocales(analysis).filter((locale) => locale !== 'en-US');
+  const localesNote =
+    extraLocales.length === 0
+      ? '#   metadata.locales takes one entry per store listing language; only en-US is declared above.'
+      : `#   metadata.locales takes one entry per store listing language. This repository has\n#   listing text for: ${extraLocales.join(', ')} — add them here to publish those listings.`;
+
+  return `
+# Sections Agentship also reads, none of them filled in for you — each is a decision.
+# Delete this block once you know it is there.
+#
+# pricing:                    # what the app itself costs, and where it is sold
+#   free: true
+#   availability:
+#     allTerritories: true
+#
+# review:                     # what App Store review needs to reach a human
+#   contactFirstName: ""
+#   contactLastName: ""
+#   contactEmail: ""
+#   contactPhone: ""          # App Store Connect refuses review details without it
+#   demoAccountRequired: false
+#   notes: ""
+#
+# monetization:               # in-app purchases and subscriptions, both stores at once
+#   products:
+#     - id: pro-monthly
+#       type: subscription
+#       period: P1M
+#       apple: { productId: com.example.pro.monthly, group: Pro }
+#       google: { productId: pro_monthly, basePlan: monthly }
+#       names:
+#         en-US: { displayName: Pro, description: Everything unlocked. }
+#       price: { base: "4.99", baseTerritory: US, strategy: convert }
+#
+${localesNote}
+`;
+}
+
+/**
+ * The build number the project already declares, if it declares one.
+ *
+ * Flutter writes it after the `+` in `pubspec.yaml`, Expo under `expo.ios.buildNumber` and
+ * `expo.android.versionCode`, native projects in `CFBundleVersion` and `versionCode`. The
+ * analyzer reads all of those, so asking the user for a number their own project states is
+ * a question with a knowable answer — and the one that stopped a build in practice.
+ *
+ * Android's `versionCode` is an integer and Apple's `CFBundleVersion` a string; the manifest
+ * carries one string, so the integer is stringified. Absent from the project means absent
+ * here: {@link missingBuildInput} then says so, rather than a number being invented.
+ */
+function buildNumberFromAnalysis(analysis: AppAnalysis): CommentedValue | undefined {
+  const { buildNumber, versionCode } = analysis.versions;
+  const source: Provenanced<string> | undefined =
+    buildNumber ??
+    (versionCode === undefined ? undefined : { ...versionCode, value: String(versionCode.value) });
+  if (source === undefined) return undefined;
+  const commented = fromProvenanced(source, 'build number');
+  return commented.value === NEEDS_INPUT ? undefined : commented;
 }
 
 /**

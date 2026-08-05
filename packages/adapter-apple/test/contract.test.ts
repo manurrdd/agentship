@@ -164,7 +164,45 @@ describe('checkAuth', () => {
       ]);
       const result = await apple.checkAuth(testContext());
       expect(result.ok).toBe(false);
+      expect(result.status).toBe('rejected');
       expect(result.detail).toContain('Authentication credentials are missing or invalid');
+    });
+  });
+
+  it('reports success as status ok', async () => {
+    await withAppleEnvironment(async () => {
+      const { adapter: apple } = adapter([
+        versionRoute(),
+        { match: 'apps list', stdout: await fixture('apps-list.json') },
+      ]);
+      await expect(apple.checkAuth(testContext())).resolves.toMatchObject({
+        status: 'ok',
+        ok: true,
+      });
+    });
+  });
+});
+
+describe('findApp', () => {
+  it('resolves an app id by bundle id with a server-side filter', async () => {
+    await withAppleEnvironment(async () => {
+      const { adapter: apple, runner } = adapter([
+        versionRoute(),
+        { match: 'apps list', stdout: await fixture('apps-list.json') },
+      ]);
+      const found = await apple.findApp?.(testContext(), 'com.agentship.demo');
+      expect(found).toEqual({ id: '1234567890', name: 'Agentship Demo' });
+      expect(runner.commands().some((command) => command.includes('--bundle-id'))).toBe(true);
+    });
+  });
+
+  it('returns undefined when the account has no app with that bundle id', async () => {
+    await withAppleEnvironment(async () => {
+      const { adapter: apple } = adapter([
+        versionRoute(),
+        { match: 'apps list', stdout: '{"data":[],"meta":{"paging":{"total":0}}}' },
+      ]);
+      await expect(apple.findApp?.(testContext(), 'com.nowhere.unknown')).resolves.toBeUndefined();
     });
   });
 });
@@ -683,6 +721,89 @@ describe('applyBatch', () => {
       expect(batch.results[1]?.skipped).toBe(true);
       // Nothing after the failure was committed.
       expect(batch.transactions[1]?.committed).toBe(false);
+    });
+  });
+});
+
+/**
+ * `asc validate` is another tool's report, not an App Store Connect resource, so the
+ * contract that matters is how a shape Agentship does not recognise is treated: "could not
+ * ask" and never "nothing is wrong".
+ */
+describe('submission readiness', () => {
+  it('reports what Apple refuses, keeping the severities Apple gave them', async () => {
+    await withAppleEnvironment(async () => {
+      const { adapter: apple, runner } = adapter([
+        versionRoute(),
+        {
+          match: 'validate --app',
+          exitCode: 1,
+          stdout: JSON.stringify({
+            summary: { errors: 1, warnings: 1 },
+            checks: [
+              {
+                code: 'review_details.missing',
+                severity: 'error',
+                blocking: true,
+                message: 'app store review details are missing',
+              },
+              {
+                code: 'screenshots.size.legacy',
+                severity: 'warning',
+                blocking: false,
+                message: 'one display family uses a legacy size',
+                remediation: 'Re-export at the current size.',
+              },
+            ],
+          }),
+        },
+      ]);
+
+      const readiness = await apple.submissionReadiness(testContext(), APP, '1.0.0');
+
+      expect(readiness.supported).toBe(true);
+      expect(readiness.blockers).toEqual([
+        {
+          code: 'review_details.missing',
+          severity: 'error',
+          blocking: true,
+          message: 'app store review details are missing',
+        },
+        {
+          code: 'screenshots.size.legacy',
+          severity: 'warning',
+          blocking: false,
+          message: 'one display family uses a legacy size',
+          remediation: 'Re-export at the current size.',
+        },
+      ]);
+      const call = runner.calls.find((candidate) => candidate.args.includes('validate'));
+      expect(call?.args).toEqual([
+        'validate',
+        '--app',
+        APP.id,
+        '--version',
+        '1.0.0',
+        '--platform',
+        'IOS',
+        '--output',
+        'json',
+      ]);
+    });
+  });
+
+  it('answers "not supported" rather than "no blockers" when the report cannot be read', async () => {
+    await withAppleEnvironment(async () => {
+      const { adapter: apple } = adapter([
+        versionRoute(),
+        { match: 'validate --app', exitCode: 2, stdout: 'Error: missing authentication' },
+      ]);
+
+      const readiness = await apple.submissionReadiness(testContext(), APP, '1.0.0');
+
+      expect(readiness.supported).toBe(false);
+      expect(readiness.blockers).toEqual([]);
+      expect(readiness.reason).toContain('exit 2');
     });
   });
 });

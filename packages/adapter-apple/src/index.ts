@@ -30,6 +30,7 @@ import {
   type RemoteProduct,
   type ScreenshotPlan,
   type StoreAdapter,
+  type SubmissionReadiness,
   type SubmissionRef,
   type SubmissionSpec,
   type SubmissionStatus,
@@ -63,6 +64,7 @@ import {
   syncAppleScreenshots,
   uploadAppleBuild,
 } from './operations.js';
+import { getAppleSubmissionReadiness } from './readiness.js';
 import { getAppleAppState, toAppSummary } from './state.js';
 
 export { APPLE_CAPABILITIES, APPLE_PENDING_OPERATIONS } from './capabilities.js';
@@ -137,17 +139,40 @@ export class AppleAdapter implements StoreAdapter {
     const result = await this.#client.runRaw(context, ascCommands.appsList({ limit: 1 }));
     if (result.exitCode !== 0) {
       return {
+        status: 'rejected',
         ok: false,
         detail: result.stderr.split('\n')[0]?.replace(/^Error:\s*/, '') ?? 'asc reported a failure',
       };
     }
-    return { ok: true, detail: 'App Store Connect accepted the API key.' };
+    return { status: 'ok', ok: true, detail: 'App Store Connect accepted the API key.' };
   }
 
   async listApps(context: AdapterContext): Promise<AppSummary[]> {
     await this.#ensureVersion(context);
     const resources = await this.#client.list(context, ascCommands.appsList({ paginate: true }));
     return resources.map((resource) => toAppSummary({ store: 'apple', id: resource.id }, resource));
+  }
+
+  /**
+   * The app record for a bundle id, or `undefined` when the account has none.
+   *
+   * Server-side filter (`--bundle-id`), so an account with hundreds of apps costs one
+   * page. This is how the kernel fills `stores.apple.appId` without asking the user for
+   * a value App Store Connect already knows.
+   */
+  async findApp(
+    context: AdapterContext,
+    bundleId: string,
+  ): Promise<{ id: string; name: string } | undefined> {
+    await this.#ensureVersion(context);
+    const resources = await this.#client.list(context, ascCommands.appsList({ bundleId }));
+    const resource = resources.find(
+      (candidate) =>
+        toAppSummary({ store: 'apple', id: candidate.id }, candidate).bundleId === bundleId,
+    );
+    if (resource === undefined) return undefined;
+    const summary = toAppSummary({ store: 'apple', id: resource.id }, resource);
+    return { id: resource.id, name: summary.name };
   }
 
   async getAppState(context: AdapterContext, ref: AppRef): Promise<RemoteAppState> {
@@ -232,6 +257,15 @@ export class AppleAdapter implements StoreAdapter {
   ): Promise<SubmissionStatus> {
     await this.#ensureVersion(context);
     return getAppleSubmissionStatus(this.#client, context, submission);
+  }
+
+  async submissionReadiness(
+    context: AdapterContext,
+    ref: AppRef,
+    version: string,
+  ): Promise<SubmissionReadiness> {
+    await this.#ensureVersion(context);
+    return getAppleSubmissionReadiness(this.#client, context, ref, version);
   }
 
   async setPhasedRelease(

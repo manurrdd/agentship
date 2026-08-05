@@ -148,7 +148,7 @@ describe('agentship MCP session', () => {
       action: 'verify',
       id: contentRating?.id as string,
     });
-    expect(verified.payload['verified']).toBe(true);
+    expect((verified.payload['verifications'] as { verified: boolean }[])[0]?.verified).toBe(true);
 
     const resumed = await harness.call('agentship_resume', {});
     const remaining = resumed.payload['plan'] as { approvalsRequired: string[] };
