@@ -6,4 +6,4 @@
  * package; `packages/cli/test/release.test.ts` fails the build when the two drift, and
  * `RELEASING.md` says to change them together.
  */
-export const AGENTSHIP_VERSION = '0.1.0';
+export const AGENTSHIP_VERSION = '0.2.0';
