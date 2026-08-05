@@ -113,17 +113,23 @@ data, that the bundle runs with only its declared third-party dependencies, and 
 pnpm changeset
 ```
 
-Describe the change in the words a user would use. Then bump `AGENTSHIP_VERSION` in
-`packages/core/src/kernel/version.ts` to the version the changeset will produce — it is
-stamped into journals, snapshots and plans, and `packages/cli/test/release.test.ts` fails if
-it disagrees with the package version.
+Describe the change in the words a user would use. Leave `AGENTSHIP_VERSION` in
+`packages/core/src/kernel/version.ts` alone: `pnpm changeset:version` runs
+`scripts/sync-version.ts` after bumping the packages, so the constant travels in the same
+commit as the version it must match. Bumping it by hand instead only moves the red build —
+`packages/cli/test/release.test.ts` fails whenever the constant and the package version
+disagree, and they disagree either from the changeset until the version pull request lands,
+or inside that pull request itself.
 
 The very first release is the exception: `0.1.0` is already in `packages/cli/package.json`,
 nothing is on the registry yet, and `changeset publish` publishes it as it stands. Every
 release after it goes through a changeset.
 
 Semver is strict from `0.1.0` on. The manifest schema, the MCP tool names and the pending
-operation ids are public contract: changing any of them is a major.
+operation ids are public contract. While the package is below `1.0.0` a breaking change is a
+`minor`, which is what semver already means at `0.x` and what keeps the version from claiming
+a stability the project has not committed to yet; from `1.0.0` on it is a `major`. Either
+way it is stated in the changeset, in the words the user will read in the changelog.
 
 ### 7. Merge and publish
 

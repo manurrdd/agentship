@@ -20,7 +20,7 @@
     "update-tools-lock": "tsx scripts/update-tools-lock.ts",
     "clean": "rm -rf packages/*/dist packages/*/*.tsbuildinfo",
     "changeset": "changeset",
-    "changeset:version": "changeset version",
+    "changeset:version": "changeset version && tsx scripts/sync-version.ts",
     "check:docs": "tsx --conditions agentship-source scripts/check-docs.ts",
     "generate:platform-limits": "tsx --conditions agentship-source scripts/generate-platform-limits.ts",
     "generate:skill-references": "tsx --conditions agentship-source scripts/generate-skill-references.ts"
