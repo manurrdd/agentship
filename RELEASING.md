@@ -11,23 +11,34 @@ hand from a laptop.
 
 ## Before you start
 
-The pipeline needs one secret to publish anything:
+The pipeline needs no secret to publish, and that is the point. `agentship` names this
+repository and `release.yml` as a **trusted publisher** on npm, so the runner exchanges its
+OIDC identity for a credential that lives for minutes and can do nothing else. The package
+is therefore set to npm's strictest publishing access — *two-factor authentication required,
+tokens disallowed* — which is exactly what trusted publishing lets you keep: there is no
+token left to steal, and provenance is generated automatically.
 
-- `NPM_TOKEN` in the repository secrets: a **granular access token with write permission on
-  `agentship` and nothing else**, never a classic token, with a short expiry. Without it the
-  workflow still runs the whole suite and stops at `npm publish --dry-run`, which is a
-  supported state — it just does not publish.
+Two consequences worth knowing before changing anything:
+
+- **Renaming `release.yml` breaks publishing.** npm matches the workflow by filename. Rename
+  it on npm first, in the package's trusted publisher settings.
+- **The Node version in `release.yml` is load-bearing.** Trusted publishing needs npm 11.5.1
+  or later, which needs Node 22.14 or later. Lowering it turns publishing off.
+
+Never enable *Bypass two-factor authentication* on the package to work around a publish
+failure. It does not grant an exception to this pipeline; it permanently allows any token
+with write access to publish, which is the door supply-chain attacks walk through.
 
 Already done and not worth repeating: the `repository` field in `packages/cli/package.json`
 (npm provenance fails without it) and two-factor authentication on the npm account.
 
 ### How 0.1.0 was published, and why it is the exception
 
-`0.1.0` went out **by hand from a laptop**, because a granular token cannot be scoped to a
-package that does not exist yet and the name had to be claimed first. That version therefore
-**carries no provenance attestation** — it is the only one that may. Every release from
-`0.1.1` on goes through the workflow, with provenance, and a version published any other way
-is a bug in the process.
+`0.1.0` went out **by hand from a laptop**, because neither a token nor a trusted publisher
+can be scoped to a package that does not exist yet and the name had to be claimed first.
+That version therefore **carries no provenance attestation** — it is the only one that may.
+Every release after it goes through the workflow, with provenance, and a version published
+any other way is a bug in the process.
 
 ## The checklist
 
