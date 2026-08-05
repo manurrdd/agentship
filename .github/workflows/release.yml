@@ -6,11 +6,15 @@ name: Release
 #    request. Nothing is published by merging code — a release is a reviewed diff.
 # 2. When that pull request lands, the same job publishes the version it created.
 #
-# The publish step runs with `--provenance` through OIDC, so every version carries a
-# verifiable link to this repository, this commit and this workflow. There is no long-lived
-# token in the runner: NPM_TOKEN is a granular automation token scoped to this package, and
-# when it is absent the job stops at `npm publish --dry-run`, which is how the pipeline is
-# exercised before the account exists.
+# There is no npm token anywhere: `agentship` names this repository and this workflow file
+# as a trusted publisher, so the runner exchanges its OIDC identity for a credential that is
+# short-lived and good for nothing else. The package can therefore keep npm's strictest
+# setting — two-factor authentication required, tokens disallowed — and a stolen token stops
+# being a way to publish, because there is none. Provenance is generated automatically on
+# this path, which is why no `--provenance` flag appears below.
+#
+# Trusted publishing needs npm 11.5.1 or later, which needs Node 22.14 or later; the Node
+# version here is what puts a new enough npm on the runner.
 on:
   push:
     branches: [main]
@@ -27,12 +31,11 @@ jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     permissions:
       contents: write
       pull-requests: write
-      # Required for npm provenance.
+      # The whole of the publish credential: npm trades this OIDC token for a short-lived
+      # one, scoped to this package, this repository and this workflow file.
       id-token: write
     steps:
       - uses: actions/checkout@v4
@@ -43,7 +46,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Newer than CI's on purpose: npm 11.5.1+ is what can publish through OIDC at all.
+          node-version: 24
           cache: pnpm
           registry-url: https://registry.npmjs.org
 
@@ -57,25 +61,17 @@ jobs:
       - run: pnpm check:docs
       - run: pnpm build
 
+      # Which half runs is decided by the repository, not by this file: with changesets
+      # pending it opens the version pull request, and with none left it publishes what that
+      # pull request produced. No npm credential is passed in — the action finds the OIDC
+      # token and uses trusted publishing.
       - name: Version pull request or publish
         id: changesets
         uses: changesets/action@v1
         with:
           version: pnpm changeset:version
-          # With no token there is nothing to publish with, so the action only opens the
-          # version pull request and the rehearsal below takes over.
-          publish: ${{ env.NPM_TOKEN != '' && 'pnpm changeset publish' || '' }}
+          publish: pnpm changeset publish
           commit: 'chore: version packages'
           title: 'chore: version packages'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          # Provenance is a publish-time flag; setting it here applies it to whatever
-          # `changeset publish` ends up publishing.
-          NPM_CONFIG_PROVENANCE: 'true'
-
-      # Without a token nothing can be published, and that is a supported state: the
-      # pipeline still proves it would work, end to end, against the real registry.
-      - name: Rehearse the publish (no token configured)
-        if: env.NPM_TOKEN == ''
-        run: pnpm --filter agentship exec npm publish --dry-run
