@@ -90,6 +90,17 @@ describe('google/listing and google/images', () => {
     await run.cleanup();
   });
 
+  it('ignores line-ending and final-newline differences introduced by listing files', async () => {
+    const state = await stateOf('google', {
+      localizations: new Map([
+        ['en-US', { name: 'Mock App\n', description: 'Fresh new description.\r\n' }],
+      ]),
+    });
+    const run = await runDiffer(googleListingDiffer(), manifestFor(), state);
+    expect(run.drafts).toEqual([]);
+    await run.cleanup();
+  });
+
   it('names Apple-only fields instead of silently dropping them', async () => {
     const manifest = manifestFor({
       metadata: {

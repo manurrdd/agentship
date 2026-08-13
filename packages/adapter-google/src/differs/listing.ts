@@ -7,6 +7,7 @@ import type {
 } from '@agentship/core';
 import {
   compareImageSet,
+  equivalentStoreText,
   findRemoteSet,
   isNeedsInput,
   resolveScreenshotSets,
@@ -52,7 +53,7 @@ export function googleListingDiffer(): ResourceDiffer {
             continue;
           }
           const current = (remote as Record<string, string | undefined> | undefined)?.[field];
-          if (current === value) continue;
+          if (equivalentStoreText(current, value)) continue;
           if (current !== undefined) touchesLiveListing = true;
           changes[field] = value;
           diff.push({

@@ -7,6 +7,8 @@ import {
   agentshipHome,
   assertInside,
   ensureAgentshipHome,
+  findProjectAbove,
+  findProjectsBelow,
   isInside,
   logsDir,
   manifestPath,
@@ -58,6 +60,31 @@ describe('project paths', () => {
     expect(manifestPath(root)).toBe('/repo/.agentship/agentship.yaml');
     expect(stateDir(root)).toBe('/repo/.agentship/state');
     expect(pendingDir(root)).toBe('/repo/.agentship/pending');
+  });
+
+  it('finds one initialized project above a nested working directory', async () => {
+    await withTempHome(async (home) => {
+      const repo = join(home, 'workspace', 'app');
+      const child = join(repo, 'packages', 'feature');
+      await mkdir(join(repo, '.agentship'), { recursive: true });
+      await mkdir(child, { recursive: true });
+      await writeFile(manifestPath(repo), 'version: 1\n');
+      expect(await findProjectAbove(child)).toBe(repo);
+    });
+  });
+
+  it('lists initialized children deterministically and ignores dependency trees', async () => {
+    await withTempHome(async (home) => {
+      const workspace = join(home, 'workspace');
+      const first = join(workspace, 'apps', 'a');
+      const second = join(workspace, 'apps', 'b');
+      const dependency = join(workspace, 'node_modules', 'not-a-project');
+      for (const repo of [second, first, dependency]) {
+        await mkdir(join(repo, '.agentship'), { recursive: true });
+        await writeFile(manifestPath(repo), 'version: 1\n');
+      }
+      expect(await findProjectsBelow(workspace)).toEqual([first, second]);
+    });
   });
 });
 

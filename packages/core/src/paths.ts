@@ -1,7 +1,8 @@
+import type { Dirent } from 'node:fs';
 import { constants as fsConstants } from 'node:fs';
-import { access, chmod, mkdir, realpath, stat } from 'node:fs/promises';
+import { access, chmod, mkdir, readdir, realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { AgentshipError, ERROR_CODES } from './errors.js';
 
 /** Directory mode for everything Agentship owns: owner-only. */
@@ -181,5 +182,78 @@ export async function pathExists(path: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Directories that never contain an app project, so the search below does not walk into a
+ * dependency tree or a build output looking for a manifest.
+ */
+const NOT_A_PROJECT: ReadonlySet<string> = new Set([
+  '.git',
+  '.gradle',
+  '.dart_tool',
+  'DerivedData',
+  'Pods',
+  'build',
+  'dist',
+  'node_modules',
+]);
+
+/** How far below a directory a nested project can be and still be found. */
+const MAX_PROJECT_SEARCH_DEPTH = 4;
+
+/**
+ * Every initialised Agentship project at or below `dir`.
+ *
+ * Two things need this, both of them consequences of the same mistake — pointing Agentship at
+ * the wrong directory. Running `analyze` one level above a project generated a *second*
+ * manifest at the parent, which then disagreed with the real one about the framework, the
+ * build number and which stores existed; the parent looked authoritative because it carried
+ * freshly generated provenance comments. And a tool called with no project has to decide
+ * which one the conversation is about.
+ *
+ * Bounded in depth and blind to dependency and output directories, so it costs a few stats
+ * on a real repository. Results are sorted, so a caller that finds more than one can present
+ * them in a stable order rather than picking arbitrarily.
+ */
+export async function findProjectsBelow(dir: string): Promise<readonly string[]> {
+  const root = resolve(dir);
+  // Never turn an omitted projectDir into a bounded-but-still-enormous crawl of the user's
+  // home directory or the filesystem. At that scope there is no honest single project.
+  if (root === homedir() || dirname(root) === root) return [];
+  const found: string[] = [];
+  const walk = async (current: string, depth: number): Promise<void> => {
+    if (await pathExists(manifestPath(current))) found.push(current);
+    if (depth >= MAX_PROJECT_SEARCH_DEPTH) return;
+    let entries: Dirent[];
+    try {
+      entries = await readdir(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (entry.name.startsWith('.') || NOT_A_PROJECT.has(entry.name)) continue;
+      await walk(join(current, entry.name), depth + 1);
+    }
+  };
+  await walk(root, 0);
+  return found.sort();
+}
+
+/**
+ * The nearest initialised Agentship project at or above `dir`, if any.
+ *
+ * Stops at the home directory and the filesystem root, neither of which is ever a project.
+ */
+export async function findProjectAbove(dir: string): Promise<string | undefined> {
+  let current = resolve(dir);
+  for (;;) {
+    if (current === homedir()) return undefined;
+    if (await pathExists(manifestPath(current))) return current;
+    const parent = dirname(current);
+    if (parent === current || current === homedir()) return undefined;
+    current = parent;
   }
 }

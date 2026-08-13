@@ -136,7 +136,21 @@ async function hasInlineSigningConfig(
     const text = await readFile(candidate, 'utf8').catch(() => undefined);
     if (text === undefined) continue;
     // A `signingConfigs { release { … } }` block means the project owns its signing.
-    if (/signingConfigs\s*\{[\s\S]{0,400}?release/.test(text)) return true;
+    if (!/signingConfigs\s*\{[\s\S]{0,800}?release/.test(text)) continue;
+
+    // Flutter's documented template declares that block unconditionally but loads every
+    // value from android/key.properties. When that file is absent, the declaration is not
+    // evidence of a usable key — it is precisely an unfinished signing setup. Treating the
+    // block alone as ready made build status optimistic and deferred the real failure until
+    // a long `flutter build appbundle` invocation.
+    if (
+      /(?:keystore|key)Properties|rootProject\.file\(["'](?:\.\.\/)?key\.properties["']\)/i.test(
+        text,
+      )
+    ) {
+      continue;
+    }
+    return true;
   }
   return false;
 }

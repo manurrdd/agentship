@@ -183,9 +183,57 @@ describe('pricing a product', () => {
       expect(result.changed).toBe(true);
       const sets = runner.commands().filter((command) => command.includes('pricing prices set'));
       expect(sets).toHaveLength(2);
-      // Every territory carries its own approved number; nothing is derived here.
-      expect(sets.some((command) => command.includes('--territory GB --price 4.49'))).toBe(true);
+      // Every territory carries its own approved number; nothing is derived here. The codes
+      // reach `asc` in the alpha-3 form it speaks, whatever the manifest was written in.
+      expect(sets.some((command) => command.includes('--territory GBR --price 4.49'))).toBe(true);
+      expect(sets.some((command) => command.includes('--territory USA --price 4.99'))).toBe(true);
       expect(sets.every((command) => command.includes('--preserved'))).toBe(true);
+    });
+  });
+
+  /**
+   * The pricing schema defaults `baseTerritory` to `US`, which is alpha-2, while Apple's
+   * territories are alpha-3. Folding the base into the territory map by raw string equality
+   * therefore let one country through twice: `asc` received a `US` it does not recognise,
+   * and the base price was replaced by whatever the `USA` entry said.
+   */
+  it('treats a country as one territory however the manifest spells it', async () => {
+    await withAppleEnvironment(async () => {
+      const { adapter: apple, runner } = adapter([
+        { match: 'subscriptions list', stdout: await fixture('subscriptions-list.json') },
+        { match: 'subscriptions pricing prices set', stdout: '{"data":{"type":"x","id":"p1"}}' },
+        { match: 'subscriptions pricing prices set', stdout: '{"data":{"type":"x","id":"p2"}}' },
+      ]);
+      await apple.setProductPricing(testContext(), APP, {
+        productId: 'com.agentship.demo.pro.monthly',
+        kind: 'auto_renewable_subscription',
+        basePrice: '4.99',
+        baseTerritory: 'US',
+        // The same country as the base, written the other way round, plus a real second one.
+        territories: { USA: '4.99', esp: '4.49' },
+      });
+      const sets = runner.commands().filter((command) => command.includes('pricing prices set'));
+      expect(sets).toHaveLength(2);
+      expect(sets.filter((command) => command.includes('--territory USA'))).toHaveLength(1);
+      expect(sets.some((command) => command.includes('--territory ESP --price 4.49'))).toBe(true);
+      expect(sets.some((command) => command.includes('--territory US '))).toBe(false);
+    });
+  });
+
+  it('refuses a territory neither store has, instead of forwarding it', async () => {
+    await withAppleEnvironment(async () => {
+      const { adapter: apple } = adapter([
+        { match: 'subscriptions list', stdout: await fixture('subscriptions-list.json') },
+      ]);
+      await expect(
+        apple.setProductPricing(testContext(), APP, {
+          productId: 'com.agentship.demo.pro.monthly',
+          kind: 'auto_renewable_subscription',
+          basePrice: '4.99',
+          baseTerritory: 'US',
+          territories: { ZZ: '1.99' },
+        }),
+      ).rejects.toMatchObject({ code: 'PLAN_INPUT_REQUIRED' });
     });
   });
 

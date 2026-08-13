@@ -8,6 +8,7 @@ import {
   ERROR_CODES,
   ensureDir,
   FILE_MODE,
+  findTerritory,
   type OperationId,
   type OpResult,
   optional,
@@ -234,6 +235,38 @@ function periodOf(duration: string | undefined): string | undefined {
  * same document: writing a product and pricing it are the same operation, and splitting them
  * in code would only invite the two paths to disagree.
  */
+/**
+ * Every territory in a pricing spec, canonicalised and denominated in its own currency.
+ *
+ * The base territory is folded in here rather than at the call sites, so `US` and `USA`
+ * cannot both survive as separate regions — one of the two ways a phantom territory used to
+ * reach the store.
+ */
+function pricedRegions(
+  pricing: ProductPricingSpec,
+): readonly { regionCode: string; price: string; currency: string }[] {
+  const byRegion = new Map<string, string>();
+  for (const [code, price] of [
+    [pricing.baseTerritory, pricing.basePrice] as const,
+    ...Object.entries(pricing.territories ?? {}),
+  ]) {
+    const known = findTerritory(code);
+    if (known === undefined) {
+      // Same rule as `currencyFor`: an unknown territory is reported, never priced.
+      currencyFor(code);
+      continue;
+    }
+    byRegion.set(known.alpha2, price);
+  }
+  return [...byRegion.entries()]
+    .map(([regionCode, price]) => ({
+      regionCode,
+      price,
+      currency: currencyFor(regionCode),
+    }))
+    .sort((a, b) => a.regionCode.localeCompare(b.regionCode));
+}
+
 function documentFor(
   product: ProductSpec,
   pricing: ProductPricingSpec | undefined,
@@ -251,16 +284,13 @@ function documentFor(
     const regionalConfigs =
       pricing === undefined
         ? []
-        : Object.entries({
-            [pricing.baseTerritory]: pricing.basePrice,
-            ...(pricing.territories ?? {}),
-          })
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([regionCode, price]) => ({
-              regionCode,
-              newSubscriberAvailability: true,
-              price: toMoney(price, currency),
-            }));
+        : pricedRegions(pricing).map((region) => ({
+            regionCode: region.regionCode,
+            newSubscriberAvailability: true,
+            // Each region's own currency: Play prices India in INR, not in the base
+            // territory's currency.
+            price: toMoney(region.price, region.currency),
+          }));
     // An empty `listings` is not "no listings": Play takes the whole resource, so sending an
     // empty array would delete the store-visible names. Omitting the key lets the merge with
     // the existing document keep them.
@@ -305,43 +335,29 @@ function documentFor(
       : {
           defaultPrice: { priceMicros: toMicros(pricing.basePrice), currency },
           prices: Object.fromEntries(
-            Object.entries({
-              [pricing.baseTerritory]: pricing.basePrice,
-              ...(pricing.territories ?? {}),
-            })
-              .sort(([a], [b]) => a.localeCompare(b))
-              .map(([territory, price]) => [territory, { priceMicros: toMicros(price), currency }]),
+            pricedRegions(pricing).map((region) => [
+              region.regionCode,
+              { priceMicros: toMicros(region.price), currency: region.currency },
+            ]),
           ),
         }),
   };
 }
 
 /**
- * Currency for a product's prices.
+ * Currency for one territory's price.
  *
- * Play needs one and the neutral pricing spec carries territories, not currencies, so the
- * base territory decides. The table is deliberately short: an unknown territory is an error
- * rather than a default, because guessing a currency means charging the wrong amount.
+ * Play prices every region in that region's own currency, so this is resolved **per
+ * territory**. It used to be resolved once from the base territory and stamped on every
+ * price, which is a money bug rather than an inconvenience: a manifest saying `IN: 199`
+ * means ₹199, and what was sent was 199 *USD*.
+ *
+ * Still strict, and for the original reason: an unknown territory is an error, never a
+ * default. Guessing a currency means charging the wrong amount.
  */
-const CURRENCY_BY_TERRITORY: Readonly<Record<string, string>> = {
-  US: 'USD',
-  GB: 'GBP',
-  EU: 'EUR',
-  DE: 'EUR',
-  FR: 'EUR',
-  ES: 'EUR',
-  IT: 'EUR',
-  JP: 'JPY',
-  CA: 'CAD',
-  AU: 'AUD',
-  MX: 'MXN',
-  BR: 'BRL',
-  IN: 'INR',
-};
-
 export function currencyFor(territory: string): string {
-  const currency = CURRENCY_BY_TERRITORY[territory.toUpperCase()];
-  if (currency === undefined) {
+  const known = findTerritory(territory);
+  if (known === undefined) {
     throw new AgentshipError(
       ERROR_CODES.PLAN_INPUT_REQUIRED,
       `Agentship does not know which currency Google Play prices "${territory}" in.`,
@@ -350,12 +366,12 @@ export function currencyFor(territory: string): string {
         details: { territory },
         remediation: {
           summary:
-            'Set monetization.products[].price.currency in the manifest, or price in a territory Agentship knows.',
+            'Use an ISO 3166-1 country code (either "ES" or "ESP") for this territory in monetization.products[].price, or remove it.',
         },
       },
     );
   }
-  return currency;
+  return known.currency;
 }
 
 export async function createGoogleProduct(

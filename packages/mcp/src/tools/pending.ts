@@ -19,7 +19,7 @@ import { credentialSource } from '@agentship/credentials';
 import { z } from 'zod';
 import { type Detail, ok } from '../format.js';
 import { summarizePendingOperation } from '../summaries.js';
-import { DETAIL_DESCRIPTION, projectDirArg, type ToolDefinition } from './types.js';
+import { DETAIL_DESCRIPTION, parseInput, projectDirArg, type ToolDefinition } from './types.js';
 
 /**
  * The console itinerary this project needs, before any plan exists.
@@ -169,6 +169,12 @@ const schema = z.object({
     .describe(
       'Verify only: several operation ids in one call. Agentship reads each store once for the whole batch, so this is much faster than one call per id — and far better than issuing them in parallel, which only queues full store snapshots behind each other.',
     ),
+  refresh: z
+    .boolean()
+    .optional()
+    .describe(
+      'List only: when true, verify every store-checkable operation against one fresh snapshot per store before returning. Default false so a plain list is instant and offline.',
+    ),
   notes: z
     .string()
     .optional()
@@ -185,7 +191,7 @@ Two kinds, and the difference matters:
 - agent_browser — you may drive your own browser through the steps, if you have one. Show the user what you are about to submit first.
 - human_only — a human must do it: identity, tax and banking details, legal agreements, two-factor authentication, anything binding. Never attempt these, never ask for the credentials they need. Hand over the steps and wait.
 
-Flow: get the instructions -> the work happens in the console -> "complete" -> "verify". Verification re-reads the store; if it answers verified:false with "no verifier registered", that is honest, not a failure — Agentship simply cannot confirm this one automatically, so ask the user to confirm instead.
+Flow: get the instructions -> the work happens in the console -> "complete" -> "verify". Verification re-reads the store; if it answers verified:false with "no verifier registered", that is honest, not a failure — Agentship simply cannot confirm this one automatically, so ask the user to confirm instead. A plain "list" stays fast and offline; use refresh:true when you explicitly want it to reconcile every checkable status first.
 
 Verify several operations in ONE call with "ids". Reading a store is the slow part — a dozen calls, and Google serialises them per package — so one snapshot is captured and shared by the whole batch. Never issue verifies in parallel instead: they queue behind each other and each pays for its own snapshot.
 
@@ -196,12 +202,42 @@ An action blocked by a pending operation stays blocked until that operation is d
   annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: true },
 
   async handler(session, args, progress) {
-    const input = schema.parse(args);
+    const input = parseInput(schema, args);
     const detail: Detail = input.detail ?? 'concise';
     const repoRoot = await session.requireProject(input.projectDir);
     const kernel = await session.engine.kernel(repoRoot);
 
     if (input.action === 'list') {
+      // When refresh was requested, close what the stores already show as done before listing.
+      //
+      // A pending operation is console work, and the store is the only witness to it being
+      // finished. Without this, an app with a live release in closed testing still listed
+      // "Create the app record", "Create the app in Play Console" and "Publish the first
+      // release" as open — work completed weeks earlier. A dozen false entries is not
+      // cosmetic: it is what stops the itinerary from being readable at all, because the
+      // user can no longer tell what is actually blocking them.
+      //
+      // Every operation that declares an automatic check is then confirmed against one fresh
+      // snapshot per store, which is the same read `agentship_store_status` performs. A
+      // store that cannot be reached must not turn listing into an error, so a failure here
+      // only leaves the statuses as they were and says so.
+      const closable = input.refresh
+        ? (await kernel.listPending())
+            .filter((operation) => operation.status === 'open' || operation.status === 'done')
+            .filter((operation) => operation.verification?.check !== undefined)
+            .map((operation) => operation.id)
+        : [];
+      let verificationNote: string | undefined;
+      if (closable.length > 0) {
+        try {
+          await kernel.verifyPending(closable, (message) => progress(message));
+        } catch (error) {
+          verificationNote = `Statuses below may be stale: Agentship could not confirm them against the stores (${
+            AgentshipError.is(error) ? error.message : String(error)
+          }).`;
+        }
+      }
+
       const persisted = await kernel.listPending();
       const merged = mergeById(persisted, await catalogPendings(repoRoot));
       const profile = await session.engine.profileFor(repoRoot);
@@ -257,6 +293,14 @@ An action blocked by a pending operation stays blocked until that operation is d
           agent_browser: actorIds('agent_browser'),
           human_only: actorIds('human_only'),
         },
+        ...(input.refresh === true
+          ? {}
+          : {
+              refreshAvailable: operations
+                .filter((operation) => operation.verification?.check !== undefined)
+                .map((operation) => operation.id),
+            }),
+        ...(verificationNote === undefined ? {} : { verificationNote }),
         nextStep:
           operations.length === 0
             ? 'No console work is pending.'
@@ -277,6 +321,13 @@ An action blocked by a pending operation stays blocked until that operation is d
           'The "verify" action needs at least one pending operation id, in "id" or "ids".',
         );
       }
+      // The catalog knows operations no plan has emitted yet, and the whole first-release
+      // path lives there: `list` shows "Create the app record in App Store Connect" and
+      // `get` explains it, but `verify` used to answer `PLAN_NOT_FOUND: no pending operation
+      // with id "apple:create-app-record"` — so the one step the user had just been told to
+      // perform was the one step they could not confirm. Persisting the catalog's version
+      // first makes the three actions agree about what exists.
+      for (const id of ids) await ensurePersisted(repoRoot, id, kernel);
       const results = await kernel.verifyPending(ids, (message) => progress(message));
       const unconfirmed = results.filter((result) => !result.verified);
       return ok({

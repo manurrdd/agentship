@@ -1,7 +1,15 @@
 import { stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
-import { AgentshipError, agentshipHome, ERROR_CODES, isInside, type Logger } from '@agentship/core';
+import {
+  AgentshipError,
+  agentshipHome,
+  ERROR_CODES,
+  findProjectAbove,
+  findProjectsBelow,
+  isInside,
+  type Logger,
+} from '@agentship/core';
 import { type AdapterFactory, Engine, mcpLogger } from './engine.js';
 
 /**
@@ -18,12 +26,15 @@ export interface SessionOptions {
   readonly adapterFactory?: AdapterFactory;
   /** Project directory the session starts on, when the host already knows it. */
   readonly projectDir?: string;
+  /** Working directory used for project recovery; defaults to the server process cwd. */
+  readonly workingDirectory?: string;
 }
 
 export class Session {
   readonly engine: Engine;
   readonly logger: Logger;
   #projectDir: string | undefined;
+  readonly #workingDirectory: string;
 
   constructor(options: SessionOptions = {}) {
     this.logger = options.logger ?? mcpLogger();
@@ -33,6 +44,7 @@ export class Session {
       ...(options.adapterFactory === undefined ? {} : { adapterFactory: options.adapterFactory }),
     });
     this.#projectDir = options.projectDir === undefined ? undefined : resolve(options.projectDir);
+    this.#workingDirectory = resolve(options.workingDirectory ?? process.cwd());
   }
 
   get projectDir(): string | undefined {
@@ -81,17 +93,44 @@ export class Session {
     return resolved;
   }
 
-  /** The project this call is about: the explicit argument, or the session's. */
+  /**
+   * The project this call is about: the explicit argument, the session's, or the one the
+   * server is obviously sitting in.
+   *
+   * The third case exists because the session's memory is only as long as the server
+   * process. An agent that analysed a repository yesterday, or before its own context was
+   * compacted, calls `agentship_plan` with no arguments and used to get "no project
+   * directory is set" — for a repository whose `.agentship/` is right there next to the
+   * working directory. The recovery is mechanical and the agent has to be told to do it,
+   * which is friction with no decision in it.
+   *
+   * The fallback is deliberately narrow: an *already initialised* project at or above the
+   * working directory, or exactly one below it. Guessing between several would be worse
+   * than asking, so several is still an error — one that now names the candidates.
+   */
   async requireProject(projectDir?: string): Promise<string> {
     if (projectDir !== undefined) return this.setProject(projectDir);
     if (this.#projectDir !== undefined) return this.#projectDir;
+
+    const cwd = this.#workingDirectory;
+    const above = await findProjectAbove(cwd);
+    if (above !== undefined) return this.setProject(above);
+
+    const below = await findProjectsBelow(cwd);
+    if (below.length === 1) return this.setProject(below[0] as string);
+
     throw new AgentshipError(
       ERROR_CODES.CONFIG_NOT_FOUND,
-      'No project directory is set for this session.',
+      below.length === 0
+        ? 'No project directory is set for this session, and none was found near the working directory.'
+        : `No project directory is set for this session, and ${below.length} projects exist below ${cwd}.`,
       {
+        ...(below.length === 0 ? {} : { details: { candidates: below } }),
         remediation: {
           summary:
-            'Call agentship_analyze with the repository path first, or pass projectDir to this tool.',
+            below.length === 0
+              ? 'Call agentship_analyze with the repository path first, or pass projectDir to this tool.'
+              : 'Pass projectDir to this tool, choosing one of the candidates listed.',
         },
       },
     );

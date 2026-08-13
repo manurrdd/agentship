@@ -45,6 +45,9 @@ const MONOREPO_ROOTS = [
   'src',
 ];
 
+/** Singular directories that commonly are the app itself, rather than a container of apps. */
+const DIRECT_APP_ROOTS: ReadonlySet<string> = new Set(['app', 'mobile', 'client']);
+
 interface PackageJson {
   readonly name?: string;
   readonly version?: string;
@@ -267,6 +270,19 @@ async function findInMonorepo(
 
   for (const parent of MONOREPO_ROOTS) {
     if (!(await fs.isDirectory(parent))) continue;
+
+    // Some repositories use `app/` (or `mobile/`) as the app itself rather than as a
+    // container of apps. Inspect that directory before descending into it. Otherwise a
+    // Flutter app at `app/pubspec.yaml` is missed and its `app/ios/*.xcodeproj` child wins as
+    // an iOS-native project, dropping Android and every Flutter-derived version value.
+    const parentCandidates = DIRECT_APP_ROOTS.has(parent) ? await candidatesFor(fs, parent) : [];
+    const parentBest = bestOf(parentCandidates);
+    if (parentBest !== undefined) {
+      matches.push({ dir: parent, candidates: parentCandidates, score: parentBest.score });
+      // Native directories contained by this cross-platform app are not separate apps.
+      continue;
+    }
+
     for (const child of await fs.list(parent)) {
       const dir = `${parent}/${child}`;
       if (!(await fs.isDirectory(dir))) continue;

@@ -94,6 +94,9 @@ profile-agnostic — a CI job runs one identity, whatever profile is selected.
   text, never in a log, never in an agent's context.
 - Nothing that spends money, changes privacy answers, or reaches production happens without
   an approval bound to that exact change, and identity, tax and banking are yours alone.
+  An approval names either one action or the whole plan — a plan id is the hash of its
+  action set, so approving it is still "exactly this and nothing else". Submitting for
+  review and releasing a held version are always approved on their own.
 - The two managed binaries are pinned by version and SHA-256; a mismatch stops everything.
 - No telemetry: Agentship contacts the two stores and nothing else, ever.
 - Details and the known limitation of iOS signing: [SECURITY.md](SECURITY.md).

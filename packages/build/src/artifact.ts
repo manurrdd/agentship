@@ -5,6 +5,8 @@ import {
   type ArtifactRecord,
   ERROR_CODES,
   fileSha256,
+  isBinaryPlist,
+  parseBinaryPlist,
   type Store,
 } from '@agentship/core';
 import plist from 'plist';
@@ -36,6 +38,8 @@ export interface ArtifactExpectation {
   readonly bundleId?: string;
   readonly builder: string;
   readonly logPath?: string;
+  /** Fingerprint of the source tree, taken before the build; absent when it could not be. */
+  readonly inputsDigest?: string;
 }
 
 export interface ArtifactInspection {
@@ -58,8 +62,15 @@ export async function inspectIpa(path: string): Promise<ArtifactInspection> {
   }
   let parsed: Record<string, unknown>;
   try {
-    // Xcode writes the packaged Info.plist as binary plist; `plist` handles both forms.
-    parsed = plist.parse(found.contents.toString('utf8')) as Record<string, unknown>;
+    // Xcode packages the Info.plist as a *binary* plist, which the `plist` package does not
+    // read — and decoding those bytes as UTF-8 first destroys them. So the format is decided
+    // by the header: binary goes to Agentship's own reader, XML (what a hand-built or
+    // re-signed archive can carry) to the library.
+    parsed = (
+      isBinaryPlist(found.contents)
+        ? parseBinaryPlist(found.contents)
+        : plist.parse(found.contents.toString('utf8'))
+    ) as Record<string, unknown>;
   } catch (cause) {
     throw AgentshipError.from(
       ERROR_CODES.BUILD_ARTIFACT_INVALID,
@@ -218,6 +229,7 @@ export async function verifyArtifact(
         : { bundleId: expectation.bundleId }
       : { bundleId: inspection.bundleId }),
     builder: expectation.builder,
+    ...(expectation.inputsDigest === undefined ? {} : { inputsDigest: expectation.inputsDigest }),
     builtAt: new Date().toISOString(),
     ...(expectation.logPath === undefined ? {} : { logPath: expectation.logPath }),
     ...(inspection.unverified.length === 0 ? {} : { unverified: inspection.unverified }),

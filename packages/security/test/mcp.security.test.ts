@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agentshipHome, createLogger } from '@agentship/core';
-import { fail, Session } from '@agentship/mcp';
+import { fail, parseInput, Session } from '@agentship/mcp';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
@@ -53,17 +53,40 @@ describe('projectDir confinement', () => {
 });
 
 describe('bad tool arguments surface as validation errors, not internal faults', () => {
-  it('reports a schema violation as INVALID_INPUT rather than INTERNAL', () => {
-    const schema = z.object({ projectDir: z.string().max(10) });
+  const schema = z.object({ projectDir: z.string().max(10) });
+
+  it('reports a schema violation in the arguments as INVALID_INPUT rather than INTERNAL', () => {
     let response: ReturnType<typeof fail> | undefined;
     try {
-      schema.parse({ projectDir: 'x'.repeat(5000) });
+      parseInput(schema, { projectDir: 'x'.repeat(5000) });
     } catch (error) {
       response = fail(error);
     }
     const text = response?.content[0]?.text ?? '';
     expect(text).toContain('INVALID_INPUT');
     expect(text).not.toContain('INTERNAL');
+    expect(text).toContain('projectDir');
+    expect(response?.isError).toBe(true);
+  });
+
+  /**
+   * The engine validates the user's manifest with the same library, so "a ZodError happened"
+   * cannot mean "the caller passed bad arguments". Conflating them told agents to retry the
+   * call with different arguments while the real fault sat in a YAML file.
+   */
+  it('does not blame the caller for a schema failure raised inside the engine', () => {
+    let response: ReturnType<typeof fail> | undefined;
+    try {
+      // Not a tool argument: the same shape the manifest loader would reject.
+      schema.parse({ projectDir: 12345 });
+    } catch (error) {
+      response = fail(error);
+    }
+    const text = response?.content[0]?.text ?? '';
+    expect(text).not.toContain('INVALID_INPUT');
+    expect(text).toContain('the tool arguments were accepted');
+    // The offending path is still reported, so the failure stays diagnosable.
+    expect(text).toContain('projectDir');
     expect(response?.isError).toBe(true);
   });
 });

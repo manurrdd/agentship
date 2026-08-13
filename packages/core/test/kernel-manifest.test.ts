@@ -11,6 +11,7 @@ import {
   NEEDS_INPUT,
   provenanced,
   saveManifest,
+  scrubStrings,
   writeGeneratedManifest,
 } from '@agentship/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -83,6 +84,57 @@ describe('manifest', () => {
     await expect(loadManifest(repoRoot)).rejects.toSatisfy(
       (error: unknown) => AgentshipError.is(error) && error.code === 'CONFIG_MANIFEST_INVALID',
     );
+  });
+
+  /**
+   * A validation failure has to survive the trip to an agent intact.
+   *
+   * It used to be reported as Zod's tree, which mirrors the manifest's own nesting — and
+   * every channel that carries an error to a model has a depth limit, so a field five
+   * levels down arrived as `{"purposes": {"errors": "[truncated]"}}`. The agent knew the
+   * file was invalid and could not find out why, so it guessed at the user's configuration.
+   * The paths below are the ones that actually failed in real sessions.
+   */
+  it('names every invalid field by path, at a depth that survives redaction', async () => {
+    const { writeFile, mkdir } = await import('node:fs/promises');
+    await mkdir(join(repoRoot, '.agentship'), { recursive: true });
+    await writeFile(
+      manifestPath(repoRoot),
+      [
+        'version: 1',
+        'app: {name: X}',
+        'stores: {apple: {bundleId: com.x.y, appId: "123"}}',
+        'metadata: {primaryLocale: en-US, locales: {en-US: {name: X, description: d}}}',
+        'release: {version: "1.0.0", buildNumber: 2, track: internal_testing, strategy: manual}',
+        'privacy:',
+        '  declarationStatus: pendiente',
+        '  dataPractices: [{dataType: email, purposes: [selling_hats]}]',
+        '',
+      ].join('\n'),
+    );
+
+    const error = await loadManifest(repoRoot).catch((cause: unknown) => cause);
+    expect(AgentshipError.is(error)).toBe(true);
+    const issues = (error as AgentshipError).details?.['issues'] as { path: string }[];
+    const paths = issues.map((issue) => issue.path);
+    expect(paths).toContain('release.buildNumber');
+    expect(paths).toContain('privacy.declarationStatus');
+    // Array members are addressed by index, so the user can find the offending entry.
+    expect(paths).toContain('privacy.dataPractices[0].dataType');
+    expect(paths).toContain('privacy.dataPractices[0].purposes[0]');
+
+    // The whole payload is two levels deep whatever the manifest looks like, so nothing is
+    // cut on the way out — the check that the old tree shape failed.
+    const survived = scrubStrings({ details: { issues } }) as {
+      details: { issues: { path: string; message: string }[] };
+    };
+    expect(survived.details.issues).toEqual(issues);
+    expect(JSON.stringify(survived)).not.toContain('[truncated]');
+
+    // And the message alone is enough to act on, without opening `details`.
+    expect((error as AgentshipError).message).toContain('privacy.declarationStatus');
+    // It must not tell the agent to go and edit the user's file.
+    expect((error as AgentshipError).remediation?.summary).toMatch(/user/i);
   });
 
   it('generates a manifest with needs_input sentinels and inferred comments', async () => {

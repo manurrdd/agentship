@@ -56,25 +56,24 @@ export async function resolveScreenshotSets(
       a.device.localeCompare(b.device) ||
       (a.slot ?? 'screenshots').localeCompare(b.slot ?? 'screenshots'),
   );
+  // Every missing file is collected before anything is reported. A manifest whose screenshot
+  // paths moved has *all* of them wrong, and failing on the first turns one fixable mistake
+  // into a dozen round trips — each one a full re-plan to discover the next identical
+  // problem. One error naming every missing file is the same information, once.
+  const missing: MissingScreenshot[] = [];
+
   for (const set of ordered) {
     const assets: ImageUpload[] = [];
     for (const [index, file] of set.files.entries()) {
       const path = isAbsolute(file) ? file : resolve(repoRoot, file);
       const info = await stat(path).catch(() => undefined);
       if (info === undefined || !info.isFile()) {
-        throw new AgentshipError(
-          ERROR_CODES.CONFIG_MANIFEST_INVALID,
-          `The manifest lists a screenshot that does not exist: ${file}.`,
-          {
-            details: { file, locale: set.locale, device: set.device },
-            remediation: {
-              summary: `Fix the path in assets.screenshots, or remove the entry for ${set.locale}/${set.device}.`,
-            },
-          },
-        );
+        missing.push({ file, locale: set.locale, device: set.device });
+        continue;
       }
       assets.push({ path, sha256: await fileSha256(path), order: index });
     }
+    if (missing.length > 0) continue;
     resolved.push({
       locale: set.locale,
       device: set.device,
@@ -83,8 +82,40 @@ export async function resolveScreenshotSets(
       sources: set.files,
     });
   }
+
+  if (missing.length > 0) {
+    const shown = missing.slice(0, MAX_LISTED_MISSING);
+    const rest = missing.length - shown.length;
+    throw new AgentshipError(
+      ERROR_CODES.CONFIG_MANIFEST_INVALID,
+      `The manifest lists ${missing.length} screenshot${missing.length === 1 ? '' : 's'} that ${
+        missing.length === 1 ? 'does' : 'do'
+      } not exist: ${shown.map((entry) => entry.file).join(', ')}${
+        rest > 0 ? `, and ${rest} more` : ''
+      }.`,
+      {
+        details: { missing },
+        remediation: {
+          // The manifest belongs to the user, and where their screenshots went is something
+          // only they know. Asking is the remediation; editing their file is not.
+          summary:
+            'Ask the user where these files are now, and whether assets.screenshots should point somewhere else or drop the entries. Do not edit .agentship/agentship.yaml on their behalf.',
+        },
+      },
+    );
+  }
   return resolved;
 }
+
+/** One screenshot the manifest promises and the repository does not have. */
+export interface MissingScreenshot {
+  readonly file: string;
+  readonly locale: string;
+  readonly device: ImageSet['device'];
+}
+
+/** Enough to show the pattern in the message; the full list stays in `details.missing`. */
+const MAX_LISTED_MISSING = 5;
 
 export interface ImageSetComparison {
   readonly matches: boolean;

@@ -4,7 +4,7 @@ import { optional } from '../optional.js';
 import type { AppRef, SubmissionReadiness } from '../store-state.js';
 import type { PendingOperation, Store } from '../types.js';
 import { loadAnalysis } from './analysis-store.js';
-import { checkApprovals } from './approvals.js';
+import { type ApprovalCheck, checkApprovals } from './approvals.js';
 import type { DifferProposals, DifferRegistry } from './differ.js';
 import type { ChaosHook, DryRunLevel, ExecutionResult, LocalRunnerMap } from './executor.js';
 import { executePlan } from './executor.js';
@@ -202,7 +202,11 @@ export class Kernel {
         );
       }
 
-      const approvalCheck = checkApprovals(fresh, options.approvals ?? []);
+      const approvalCheck = withdrawOnDrift(
+        checkApprovals(fresh, options.approvals ?? []),
+        fresh,
+        driftDetected,
+      );
       const merged = await mergePendingOperations(this.repoRoot, fresh.pending);
       const pendingById = new Map(merged.map((operation) => [operation.id, operation]));
 
@@ -233,6 +237,18 @@ export class Kernel {
         await mergePendingOperations(this.repoRoot, execution.emittedPending);
       }
 
+      // Record where the stores stand *after* this run, so the next apply's drift check
+      // measures what someone else did rather than what Agentship just did. The plan was
+      // saved with snapshots taken before execution; leaving them there made every
+      // successful apply look like external drift to the one after it, which withdrew
+      // approvals the user had given for work Agentship itself had just completed.
+      if (execution.outcomes.some((outcome) => outcome.changed === true)) {
+        await savePlan(this.repoRoot, {
+          ...fresh,
+          snapshots: await this.currentSnapshots(manifest, fresh.stores, fresh.snapshots),
+        });
+      }
+
       return {
         ...execution,
         planId: fresh.planId,
@@ -245,6 +261,36 @@ export class Kernel {
     } finally {
       await lock.release();
     }
+  }
+
+  /**
+   * Fresh fingerprints for the stores a plan touched, keeping the old ones where a store
+   * cannot be read. A snapshot that fails here must not erase the reference point the next
+   * drift check needs — losing it would make the next apply see no drift at all.
+   */
+  private async currentSnapshots(
+    manifest: AgentshipManifest,
+    stores: readonly Store[],
+    previous: ReleasePlan['snapshots'],
+  ): Promise<ReleasePlan['snapshots']> {
+    const snapshots: Record<string, unknown> = { ...previous };
+    for (const store of stores) {
+      try {
+        const snapshot = await captureSnapshot(
+          this.adapter(store),
+          this.context,
+          await this.ensureRef(manifest, store, []),
+          this.repoRoot,
+        );
+        snapshots[store] = {
+          capturedAt: snapshot.state.capturedAt,
+          fingerprint: snapshot.fingerprint,
+        };
+      } catch {
+        // Keep the previous fingerprint: an unreadable store is not "unchanged".
+      }
+    }
+    return snapshots as ReleasePlan['snapshots'];
   }
 
   /** Resumes the current plan: `apply` against whatever remains to be done. */
@@ -462,6 +508,41 @@ export class Kernel {
     }
     return { store, id: google.packageName, bundleId: google.packageName, platform: 'android' };
   }
+}
+
+/**
+ * Withdraws approvals for a store that moved under the user's feet.
+ *
+ * Someone editing the listing in the console while a plan is being applied is a different
+ * situation from Agentship's own writes landing one after another, and only the first is a
+ * reason to ask the user again: their colleague may have made that change deliberately, and
+ * the diff they approved is no longer the diff they would see.
+ *
+ * This used to happen by accident. An action id hashed the store's *current* value as well
+ * as the target, so any movement rotated the id and the approval stopped matching. That
+ * caught external drift — and equally caught Agentship's own sequential applies, sending
+ * users back to re-approve wording nothing had touched. The id now hashes only what the
+ * action will make true, so the drift rule has to be stated rather than fall out of a hash.
+ */
+function withdrawOnDrift(
+  check: ApprovalCheck,
+  plan: ReleasePlan,
+  drifted: readonly Store[],
+): ApprovalCheck {
+  if (drifted.length === 0) return check;
+  const affected = new Set(
+    plan.actions
+      .filter((action) => drifted.includes(action.store))
+      .map((action) => action.id)
+      .filter((id) => check.valid.has(id)),
+  );
+  if (affected.size === 0) return check;
+  return {
+    valid: new Set([...check.valid].filter((id) => !affected.has(id))),
+    stale: [...check.stale, ...affected].sort(),
+    unknown: check.unknown,
+    missing: [...new Set([...check.missing, ...affected])].sort(),
+  };
 }
 
 function manifestRefError(path: string, extra?: string): AgentshipError {

@@ -35,6 +35,7 @@ export {
   requireHostTool,
   runHostTool,
 } from './host.js';
+export { fingerprintBuildInputs, type InputsFingerprint } from './inputs.js';
 export { buildIos, exportOptions, iosProjectDir, resolveProjectTarget } from './ios.js';
 export {
   BUILD_VERIFIERS,

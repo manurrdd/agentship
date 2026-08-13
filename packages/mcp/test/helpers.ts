@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,6 +15,8 @@ import {
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { testManifest, writeArtifacts } from '../../core/test/kernel-helpers.js';
+import { setKeyringEntryCtorForTests } from '../../credentials/src/keyring.js';
+import { memoryKeyringEntryCtor } from '../../credentials/test/helpers.js';
 import { createAgentshipServer } from '../src/server.js';
 
 /**
@@ -51,7 +54,14 @@ export async function createMcpHarness(options: HarnessOptions = {}): Promise<Mc
   const stores = options.stores ?? ['apple'];
   const repoRoot = await mkdtemp(join(tmpdir(), 'agentship-mcp-repo-'));
   const home = await mkdtemp(join(tmpdir(), 'agentship-mcp-home-'));
+  const previousHome = process.env['AGENTSHIP_HOME'];
+  const previousKeyringService = process.env['AGENTSHIP_KEYRING_SERVICE'];
   process.env['AGENTSHIP_HOME'] = home;
+  // The keyring lives outside AGENTSHIP_HOME, so isolating the home is not enough: without
+  // this the contract tests read the developer's real keychain, and "no credentials are
+  // configured" became false on exactly the machines that use Agentship.
+  process.env['AGENTSHIP_KEYRING_SERVICE'] = `agentship-test-${randomUUID()}`;
+  setKeyringEntryCtorForTests(memoryKeyringEntryCtor());
 
   if (options.withoutManifest !== true) {
     await saveManifest(repoRoot, options.manifest ?? testManifest({ stores }));
@@ -102,6 +112,11 @@ export async function createMcpHarness(options: HarnessOptions = {}): Promise<Mc
       await server.close();
       await rm(repoRoot, { recursive: true, force: true });
       await rm(home, { recursive: true, force: true });
+      if (previousHome === undefined) delete process.env['AGENTSHIP_HOME'];
+      else process.env['AGENTSHIP_HOME'] = previousHome;
+      if (previousKeyringService === undefined) delete process.env['AGENTSHIP_KEYRING_SERVICE'];
+      else process.env['AGENTSHIP_KEYRING_SERVICE'] = previousKeyringService;
+      setKeyringEntryCtorForTests(undefined);
     },
   };
 }

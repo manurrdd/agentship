@@ -239,6 +239,96 @@ export function pbxprojSettings(source: string): Map<string, string[]> {
   return settings;
 }
 
+/** Returns one brace-delimited object from a pbxproj section, including nested settings. */
+function pbxprojObject(section: string, id: string): string | undefined {
+  const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const start = new RegExp(`^\\s*${escaped}(?:\\s*\\/\\*[^\n]*?\\*\\/)?\\s*=\\s*\\{`, 'm').exec(
+    section,
+  );
+  if (start === null) return undefined;
+  const opening = section.indexOf('{', start.index);
+  let depth = 0;
+  let quoted = false;
+  let escapedCharacter = false;
+  for (let index = opening; index < section.length; index++) {
+    const character = section[index];
+    if (escapedCharacter) {
+      escapedCharacter = false;
+      continue;
+    }
+    if (quoted && character === '\\') {
+      escapedCharacter = true;
+      continue;
+    }
+    if (character === '"') {
+      quoted = !quoted;
+      continue;
+    }
+    if (quoted) continue;
+    if (character === '{') depth++;
+    if (character === '}' && --depth === 0) return section.slice(opening + 1, index);
+  }
+  return undefined;
+}
+
+function pbxprojSection(source: string, name: string): string | undefined {
+  return new RegExp(
+    `/\\* Begin ${name} section \\*/([\\s\\S]*?)/\\* End ${name} section \\*/`,
+  ).exec(source)?.[1];
+}
+
+/**
+ * Build settings belonging specifically to the main iOS application target.
+ *
+ * A project may put a widget, notification extension and test targets before the app in the
+ * file. Collecting every `PRODUCT_BUNDLE_IDENTIFIER` and taking the first therefore selects
+ * the widget on perfectly ordinary Flutter projects. The pbxproj already contains the exact
+ * graph needed to avoid guessing: application target -> configuration list -> build
+ * configurations. Only those settings are returned here.
+ */
+export function pbxprojApplicationSettings(source: string): Map<string, string[]> {
+  const targets = pbxprojSection(source, 'PBXNativeTarget');
+  const lists = pbxprojSection(source, 'XCConfigurationList');
+  const configurations = pbxprojSection(source, 'XCBuildConfiguration');
+  if (targets === undefined || lists === undefined || configurations === undefined) {
+    return new Map();
+  }
+
+  const applicationTargets = [
+    ...targets.matchAll(/^\s*([A-Za-z0-9_-]+)(?:\s*\/\*([^\n]*?)\*\/)?\s*=\s*\{/gm),
+  ]
+    .map((match) => {
+      const id = match[1] as string;
+      return { id, name: (match[2] ?? '').trim(), block: pbxprojObject(targets, id) };
+    })
+    .filter((target) =>
+      /productType\s*=\s*"?com\.apple\.product-type\.application"?\s*;/.test(target.block ?? ''),
+    )
+    .sort((a, b) => {
+      const rank = (name: string): number => (/\b(Runner|App)\b/i.test(name) ? 0 : 1);
+      return rank(a.name) - rank(b.name);
+    });
+
+  const target = applicationTargets[0];
+  const listId = /buildConfigurationList\s*=\s*([A-Za-z0-9_-]+)/.exec(target?.block ?? '')?.[1];
+  if (listId === undefined) return new Map();
+  const list = pbxprojObject(lists, listId);
+  const references = /buildConfigurations\s*=\s*\(([\s\S]*?)\);/.exec(list ?? '')?.[1];
+  if (references === undefined) return new Map();
+
+  const result = new Map<string, string[]>();
+  for (const match of references.matchAll(/^\s*([A-Za-z0-9_-]+)(?:\s*\/\*[^\n]*?\*\/)?\s*,?/gm)) {
+    const block = pbxprojObject(configurations, match[1] as string);
+    if (block === undefined) continue;
+    for (const [key, values] of pbxprojSettings(block)) {
+      const existing = result.get(key) ?? [];
+      for (const value of values) if (!existing.includes(value)) existing.push(value);
+      result.set(key, existing);
+    }
+  }
+  return result;
+}
+
 /** Build configuration names declared in a `project.pbxproj`. */
 export function pbxprojConfigurations(source: string): string[] {
   const names = new Set<string>();

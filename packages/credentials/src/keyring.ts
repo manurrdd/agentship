@@ -13,7 +13,25 @@ import { AgentshipError, ERROR_CODES, type Store } from '@agentship/core';
  * time — which would take down even the code paths that never touch a secret.
  */
 
-const SERVICE = 'agentship';
+const DEFAULT_SERVICE = 'agentship';
+
+/**
+ * The keyring service every entry is filed under.
+ *
+ * Overridable through `AGENTSHIP_KEYRING_SERVICE` for one reason: without it there is no way
+ * to run Agentship's own test suite without reading the developer's real credentials. That
+ * is not a hypothetical — the suite failed on any machine that used Agentship, and because a
+ * failed assertion prints the value it received, the diff put a real `.p8` private key on
+ * the console. A namespace is the only part of the keyring worth making configurable; the
+ * absence of a file-based fallback above is not.
+ *
+ * Read on every call rather than captured at import, so a test can isolate itself without
+ * having to control module load order.
+ */
+function service(): string {
+  const override = process.env['AGENTSHIP_KEYRING_SERVICE'];
+  return override === undefined || override === '' ? DEFAULT_SERVICE : override;
+}
 
 /**
  * What a keyring entry can hold.
@@ -30,7 +48,7 @@ export function accountName(store: SecretKind, profile: string): string {
   return `${store}:${profile}`;
 }
 
-type EntryCtor = new (
+export type KeyringEntryCtor = new (
   service: string,
   username: string,
 ) => {
@@ -39,14 +57,31 @@ type EntryCtor = new (
   deleteCredential(): Promise<boolean>;
 };
 
-let entryCtor: EntryCtor | undefined;
+let entryCtor: KeyringEntryCtor | undefined;
 let loadFailure: unknown;
 
-async function getEntryCtor(): Promise<EntryCtor> {
+/**
+ * Replaces the native keyring only inside a test process.
+ *
+ * Tests must never probe or write a developer's real credentials. Dependency injection is
+ * safer than a magic environment fallback: production code cannot accidentally select an
+ * in-memory store and report credentials as persisted when they will disappear on exit.
+ */
+export function setKeyringEntryCtorForTests(ctor: KeyringEntryCtor | undefined): void {
+  if (process.env['NODE_ENV'] !== 'test') {
+    throw new Error('A keyring test double can only be installed while NODE_ENV=test.');
+  }
+  entryCtor = ctor;
+  loadFailure = undefined;
+}
+
+async function getEntryCtor(): Promise<KeyringEntryCtor> {
   if (entryCtor !== undefined) return entryCtor;
   if (loadFailure !== undefined) throw unavailable(loadFailure);
   try {
-    const mod = (await import('@napi-rs/keyring')) as unknown as { AsyncEntry: EntryCtor };
+    const mod = (await import('@napi-rs/keyring')) as unknown as {
+      AsyncEntry: KeyringEntryCtor;
+    };
     entryCtor = mod.AsyncEntry;
     return entryCtor;
   } catch (cause) {
@@ -103,7 +138,7 @@ export async function keyringSet(
 ): Promise<void> {
   const Entry = await getEntryCtor();
   try {
-    await new Entry(SERVICE, accountName(store, profile)).setPassword(secret);
+    await new Entry(service(), accountName(store, profile)).setPassword(secret);
   } catch (cause) {
     throw mapKeyringError(cause, 'store', store);
   }
@@ -112,7 +147,7 @@ export async function keyringSet(
 export async function keyringGet(store: SecretKind, profile: string): Promise<string | undefined> {
   const Entry = await getEntryCtor();
   try {
-    const value = await new Entry(SERVICE, accountName(store, profile)).getPassword();
+    const value = await new Entry(service(), accountName(store, profile)).getPassword();
     return value === null ? undefined : value;
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
@@ -125,7 +160,7 @@ export async function keyringGet(store: SecretKind, profile: string): Promise<st
 export async function keyringDelete(store: SecretKind, profile: string): Promise<boolean> {
   const Entry = await getEntryCtor();
   try {
-    return await new Entry(SERVICE, accountName(store, profile)).deleteCredential();
+    return await new Entry(service(), accountName(store, profile)).deleteCredential();
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
     if (NO_ENTRY_PATTERNS.test(message)) return false;

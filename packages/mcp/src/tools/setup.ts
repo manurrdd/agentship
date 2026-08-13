@@ -33,7 +33,7 @@ import { z } from 'zod';
 import { mockStoresEnabled } from '../engine.js';
 import { ok } from '../format.js';
 import type { Session } from '../session.js';
-import { DETAIL_DESCRIPTION, type ToolDefinition } from './types.js';
+import { DETAIL_DESCRIPTION, parseInput, type ToolDefinition } from './types.js';
 
 const statusSchema = z.object({
   detail: z.enum(['concise', 'full']).optional().describe(DETAIL_DESCRIPTION),
@@ -57,7 +57,7 @@ A store with no credentials only blocks that store: the other one can still be p
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
 
   async handler(session, args) {
-    const input = statusSchema.parse(args);
+    const input = parseInput(statusSchema, args);
     const detail = input.detail ?? 'concise';
     const env = defaultEnv({ logger: session.logger });
 
@@ -110,6 +110,9 @@ A store with no credentials only blocks that store: the other one can still be p
     }
 
     const installed = await readIntegrations();
+    const integrationVersionMismatch = installed.agents
+      .filter((record) => record.agentshipVersion !== AGENTSHIP_VERSION)
+      .map((record) => ({ agent: record.agent, installedVersion: record.agentshipVersion }));
     const agents: Record<string, unknown>[] = [];
     for (const record of installed.agents) {
       const integration = agentIntegrations().find((entry) => entry.agent === record.agent);
@@ -150,6 +153,16 @@ A store with no credentials only blocks that store: the other one can still be p
       tools,
       credentials,
       agents,
+      ...(integrationVersionMismatch.length === 0
+        ? {}
+        : {
+            restartRequired: {
+              runningVersion: AGENTSHIP_VERSION,
+              integrations: integrationVersionMismatch,
+              message:
+                'The running MCP server and the installed integration record have different Agentship versions. If agentship update just ran, restart the host agent so it launches the new server; otherwise run agentship update first.',
+            },
+          }),
       ...(warnings.length === 0 ? {} : { warnings }),
       ...(detail === 'full'
         ? { detectedAgents: await detectAgents(env), doctor }
@@ -223,7 +236,7 @@ Apple needs: keyId, issuerId, privateKeyPath or privateKeyPem, optionally keyNam
   annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: true },
 
   async handler(session, args) {
-    const input = configureSchema.parse(args);
+    const input = parseInput(configureSchema, args);
     const store = input.store;
     const profile = await effectiveProfile(session, input.profile);
     const flow = setupFlow(store);

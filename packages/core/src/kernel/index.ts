@@ -13,6 +13,7 @@ export * from './manifest.js';
 export * from './monetization.js';
 export * from './pending.js';
 export * from './plan.js';
+export * from './pretty-price.js';
 export * from './privacy.js';
 export * from './products.js';
 export * from './snapshot.js';

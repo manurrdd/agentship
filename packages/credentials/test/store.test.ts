@@ -1,12 +1,11 @@
 import { readFile } from 'node:fs/promises';
 import { createLogger, type LogRecord, userConfigPath } from '@agentship/core';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   credentialSource,
   deleteCredentials,
   GOOGLE_ENV,
   getCredentials,
-  keyringAvailable,
   listProfiles,
   setCredentials,
 } from '../src/index.js';
@@ -20,25 +19,14 @@ import {
 } from './helpers.js';
 
 /**
- * Round-trip tests against the real OS keyring.
+ * Round-trip tests against an isolated in-memory implementation of the OS-keyring contract.
  *
- * Skipped where no keyring exists (a headless Linux CI runner, typically), which is exactly
- * the environment the variable-based fallback exists for — and which the tests above cover.
- * Profile names are process-scoped and deleted afterwards so a developer's own credentials
- * are never touched.
+ * The native keyring is deliberately not involved: a test process must never read or write
+ * a developer's real credentials, and a desktop keyring can require interactive approval.
  */
-const keyring = await keyringAvailable();
 const PROFILE = `apptest-${process.pid}`;
 
-afterAll(async () => {
-  if (!keyring) return;
-  await withTempHome(async () => {
-    await deleteCredentials('apple', { profile: PROFILE }).catch(() => undefined);
-    await deleteCredentials('google', { profile: PROFILE }).catch(() => undefined);
-  });
-});
-
-describe.skipIf(!keyring)('credential store round-trip', () => {
+describe('credential store round-trip', () => {
   it('stores and reads back an Apple credential', async () => {
     await withTempHome(async () => {
       const pem = applePrivateKeyPem();

@@ -4,6 +4,7 @@ import {
   type AgeRatingDeclaration,
   type AppRef,
   ERROR_CODES,
+  findTerritory,
   type OperationId,
   type OpResult,
   optional,
@@ -52,6 +53,51 @@ function result(
 
 function isSubscription(kind: ProductKind): boolean {
   return kind === 'auto_renewable_subscription';
+}
+
+/**
+ * A territory in the alpha-3 form App Store Connect uses.
+ *
+ * The manifest may hold either code system — the pricing schema's own default is `US`, which
+ * is alpha-2 — so accepting one and rejecting the other would make a perfectly reasonable
+ * manifest unusable on Apple. An unknown code is still an error: `asc` would reject it too,
+ * but later, after the plan had been approved.
+ */
+function appleTerritory(code: string): string {
+  const known = findTerritory(code);
+  if (known === undefined) {
+    throw new AgentshipError(
+      ERROR_CODES.PLAN_INPUT_REQUIRED,
+      `App Store Connect has no territory "${code}".`,
+      {
+        store: 'apple',
+        details: { territory: code },
+        remediation: {
+          summary:
+            'Use an ISO 3166-1 country code (either "ES" or "ESP") for this territory in monetization.products[].price, or remove it.',
+        },
+      },
+    );
+  }
+  return known.alpha3;
+}
+
+/**
+ * Every territory in a pricing spec, in Apple's codes, deduplicated by country.
+ *
+ * The base territory belongs in the same map as the rest — one country has one price — and
+ * deduplicating it by raw string let `US` and `USA` both through: Apple received a phantom
+ * territory and the base price was silently replaced by the entry for the same country.
+ */
+function appleTerritories(pricing: ProductPricingSpec): readonly (readonly [string, string])[] {
+  const byTerritory = new Map<string, string>();
+  for (const [code, price] of [
+    [pricing.baseTerritory, pricing.basePrice] as const,
+    ...Object.entries(pricing.territories ?? {}),
+  ]) {
+    byTerritory.set(appleTerritory(code), price);
+  }
+  return [...byTerritory.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 }
 
 function applePeriod(period: string | undefined): AscSubscriptionPeriod | undefined {
@@ -387,12 +433,12 @@ export async function setAppleProductPricing(
       { store: 'apple', details: { productId: pricing.productId } },
     );
   }
-  const territories: (readonly [string, string])[] = [
-    [pricing.baseTerritory, pricing.basePrice] as const,
-    ...Object.entries(pricing.territories ?? {})
-      .filter(([territory]) => territory !== pricing.baseTerritory)
-      .map(([territory, price]) => [territory, price] as const),
-  ].sort((a, b) => a[0].localeCompare(b[0]));
+  // App Store Connect speaks ISO 3166-1 alpha-3, and the manifest may be written in either
+  // code system — including the schema's own `US` default. Canonicalising before deduping is
+  // what stops `US` and `USA` surviving as two territories, which sent Apple a code it does
+  // not recognise *and* discarded the base price for the country it belongs to.
+  const territories = appleTerritories(pricing);
+  const baseTerritory = appleTerritory(pricing.baseTerritory);
 
   if (dryRun) {
     return result('setProductPricing', {
@@ -422,13 +468,13 @@ export async function setAppleProductPricing(
       ascCommands.iapPriceScheduleCreate({
         iapId: existing.id,
         appId: ref.id,
-        baseTerritory: pricing.baseTerritory,
+        baseTerritory,
         price: pricing.basePrice,
         ...optional('startDate', pricing.startDate),
       }),
     );
     const extra = territories
-      .filter(([territory]) => territory !== pricing.baseTerritory)
+      .filter(([territory]) => territory !== baseTerritory)
       .map(([territory]) => territory);
     if (extra.length > 0) {
       await client.run(
@@ -436,7 +482,7 @@ export async function setAppleProductPricing(
         ascCommands.iapAvailabilitySet({
           iapId: existing.id,
           appId: ref.id,
-          territories: [pricing.baseTerritory, ...extra],
+          territories: [baseTerritory, ...extra],
         }),
       );
     }

@@ -13,6 +13,7 @@ import {
 import { buildAndroid } from './android.js';
 import { verifyArtifact } from './artifact.js';
 import { buildFlutter } from './flutter.js';
+import { fingerprintBuildInputs } from './inputs.js';
 import { buildIos } from './ios.js';
 import { createBuildLog } from './logs.js';
 import { builderFor, buildSupport, detectProject } from './matrix.js';
@@ -106,6 +107,15 @@ export async function runBuild(options: RunBuildOptions): Promise<BuildOutcome> 
     `builder=${builder} version=${version} buildNumber=${buildNumber} appDir=${shape.appDir}\n`,
   );
 
+  // Taken before the build runs: this is the state of the project the artifact will be built
+  // from, and it is what decides whether the result may be reused later instead of rebuilt.
+  const inputs = await fingerprintBuildInputs(shape.appDir);
+  await log.write(
+    inputs === undefined
+      ? 'inputs=unfingerprinted (this artifact will never be reused)\n'
+      : `inputs=${inputs.digest} files=${inputs.files} bytes=${inputs.bytes}\n`,
+  );
+
   const shared = {
     repoRoot: options.repoRoot,
     shape,
@@ -146,6 +156,7 @@ export async function runBuild(options: RunBuildOptions): Promise<BuildOutcome> 
         : { bundleId: manifest.stores.google.packageName }),
     builder,
     logPath: log.path,
+    ...(inputs === undefined ? {} : { inputsDigest: inputs.digest }),
   });
 
   await recordArtifact(options.repoRoot, artifact);

@@ -5,7 +5,7 @@ import type {
   LocalizedMetadata,
   ResourceDiffer,
 } from '@agentship/core';
-import { isNeedsInput } from '@agentship/core';
+import { equivalentStoreText, isNeedsInput } from '@agentship/core';
 import { findVersion, isSubmitted } from './version-state-rules.js';
 
 /**
@@ -75,7 +75,7 @@ export function appleMetadataDiffer(): ResourceDiffer {
           const isAppField = (APP_FIELDS as readonly string[]).includes(field);
           const remote = isAppField ? (appLevel ?? versionLevel) : (versionLevel ?? appLevel);
           const current = (remote as Record<string, string | undefined> | undefined)?.[field];
-          if (current === value) continue;
+          if (equivalentStoreText(current, value)) continue;
           if (field === 'name' && appIsLive && current !== undefined) renamesLiveApp = true;
           changes[field] = value;
           diff.push({
