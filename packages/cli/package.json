@@ -1,6 +1,6 @@
 {
   "name": "agentship",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "license": "MIT",
   "description": "Publish iOS and Android apps from an AI agent: MCP server, lifecycle CLI and skills.",
