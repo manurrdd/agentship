@@ -6,7 +6,13 @@ import type {
   Provenanced,
 } from '@agentship/core';
 import { provenanced } from '@agentship/core';
-import { entitlementKeys, parsePlist, pbxprojConfigurations, pbxprojSettings } from './parsers.js';
+import {
+  entitlementKeys,
+  parsePlist,
+  pbxprojApplicationSettings,
+  pbxprojConfigurations,
+  pbxprojSettings,
+} from './parsers.js';
 import type { RepoFs } from './repo-fs.js';
 
 /**
@@ -130,7 +136,16 @@ export async function extractIos(fs: RepoFs, appDir: string): Promise<IosExtract
     p.startsWith(prefix),
   );
   const pbxproj = pbxprojPath === undefined ? undefined : await fs.readText(pbxprojPath);
-  const settings = pbxproj === undefined ? new Map<string, string[]>() : pbxprojSettings(pbxproj);
+  const applicationSettings =
+    pbxproj === undefined ? new Map<string, string[]>() : pbxprojApplicationSettings(pbxproj);
+  // Older or hand-written projects may not contain the target graph sections. Keep the
+  // tolerant all-settings reader as a fallback, but never use it when the app target is known.
+  const settings =
+    applicationSettings.size > 0
+      ? applicationSettings
+      : pbxproj === undefined
+        ? new Map<string, string[]>()
+        : pbxprojSettings(pbxproj);
   const configurations = pbxproj === undefined ? [] : pbxprojConfigurations(pbxproj);
 
   const infoPlistPath = await findInfoPlist(fs, iosDir);

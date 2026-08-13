@@ -1,3 +1,6 @@
+import { lstat, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { APPLE_CAPABILITIES, AppleAdapter } from '../src/index.js';
 import {
@@ -397,42 +400,64 @@ describe('setMetadata', () => {
 
 describe('syncScreenshots', () => {
   it('uploads per locale and device, skipping what the App Store cannot express', async () => {
-    await withAppleEnvironment(async () => {
-      const { adapter: apple, runner } = adapter([
-        versionRoute(),
-        { match: 'versions list', stdout: await fixture('versions-list.json') },
-        {
-          match: 'localizations list --version',
-          stdout: await fixture('localizations-version.json'),
-        },
-        { match: 'screenshots upload', stdout: '{"uploaded":1,"skipped":0}' },
-      ]);
-
-      const result = await apple.syncScreenshots(testContext(), APP, {
-        sets: [
+    const sourceDir = await mkdtemp(join(tmpdir(), 'agentship-apple-screenshot-'));
+    const source = join(sourceDir, 'a.png');
+    await writeFile(source, 'png');
+    let stagedIsRegularFile = false;
+    let stagedIsSymlink = true;
+    try {
+      await withAppleEnvironment(async () => {
+        const { adapter: apple, runner } = adapter([
+          versionRoute(),
+          { match: 'versions list', stdout: await fixture('versions-list.json') },
           {
-            locale: 'en-US',
-            device: 'phone',
-            assets: [{ path: '/tmp/a.png', sha256: 'a'.repeat(64), order: 0 }],
+            match: 'localizations list --version',
+            stdout: await fixture('localizations-version.json'),
           },
-          { locale: 'en-US', device: 'tablet_7', assets: [] },
-          { locale: 'en-US', device: 'phone', slot: 'app_icon', assets: [] },
-          { locale: 'de-DE', device: 'phone', assets: [] },
-        ],
+          {
+            match: 'screenshots upload',
+            stdout: '{"uploaded":1,"skipped":0}',
+            inspect: async (invocation) => {
+              const index = invocation.args.indexOf('--path');
+              const directory = invocation.args[index + 1] as string;
+              const entry = join(directory, '000-a.png');
+              const info = await lstat(entry);
+              stagedIsRegularFile = info.isFile();
+              stagedIsSymlink = info.isSymbolicLink();
+            },
+          },
+        ]);
+
+        const result = await apple.syncScreenshots(testContext(), APP, {
+          sets: [
+            {
+              locale: 'en-US',
+              device: 'phone',
+              assets: [{ path: source, sha256: 'a'.repeat(64), order: 0 }],
+            },
+            { locale: 'en-US', device: 'tablet_7', assets: [] },
+            { locale: 'en-US', device: 'phone', slot: 'app_icon', assets: [] },
+            { locale: 'de-DE', device: 'phone', assets: [] },
+          ],
+        });
+
+        const upload = runner.commands().find((c) => c.startsWith('screenshots upload'));
+        expect(upload).toContain('--device-type IPHONE_65');
+        // `--skip-existing` is what makes a re-run a no-op.
+        expect(upload).toContain('--skip-existing');
+        expect(upload).toContain('--version-localization loc-en');
+
+        const warnings = result.warnings?.join(' ') ?? '';
+        expect(warnings).toContain('tablet_7');
+        expect(warnings).toContain('app icon');
+        // de-DE has no localization on this version, so it is reported rather than guessed.
+        expect(warnings).toContain('de-DE');
+        expect(stagedIsRegularFile).toBe(true);
+        expect(stagedIsSymlink).toBe(false);
       });
-
-      const upload = runner.commands().find((c) => c.startsWith('screenshots upload'));
-      expect(upload).toContain('--device-type IPHONE_65');
-      // `--skip-existing` is what makes a re-run a no-op.
-      expect(upload).toContain('--skip-existing');
-      expect(upload).toContain('--version-localization loc-en');
-
-      const warnings = result.warnings?.join(' ') ?? '';
-      expect(warnings).toContain('tablet_7');
-      expect(warnings).toContain('app icon');
-      // de-DE has no localization on this version, so it is reported rather than guessed.
-      expect(warnings).toContain('de-DE');
-    });
+    } finally {
+      await rm(sourceDir, { recursive: true, force: true });
+    }
   });
 });
 

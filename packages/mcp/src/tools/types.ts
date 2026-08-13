@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ToolResponse } from '../format.js';
+import { InvalidToolInput, type ToolResponse } from '../format.js';
 import type { Session } from '../session.js';
 
 /**
@@ -27,6 +27,30 @@ export interface ToolDefinition {
   readonly schema: z.ZodObject<z.ZodRawShape>;
   readonly annotations: ToolAnnotations;
   handler(session: Session, args: unknown, progress: Progress): Promise<ToolResponse>;
+}
+
+/**
+ * Parses a tool call's arguments, marking the failure as the caller's.
+ *
+ * The distinction matters more than it looks. Every handler validates its arguments with a
+ * Zod schema, and the engine underneath uses Zod too — for the user's manifest. When any
+ * `ZodError` was reported as "the tool arguments did not match the expected schema", a
+ * manifest with a bad field told the agent it had called the tool wrong, and it would retry
+ * the same call with different arguments while the real problem sat in a YAML file. Only
+ * errors raised right here are argument errors; anything else is Agentship's own.
+ */
+export function parseInput<T extends z.ZodObject<z.ZodRawShape>>(
+  schema: T,
+  args: unknown,
+): z.infer<T> {
+  const result = schema.safeParse(args);
+  if (result.success) return result.data;
+  throw new InvalidToolInput(
+    result.error.issues.map((issue) => ({
+      path: issue.path.map((segment) => String(segment)).join('.'),
+      message: issue.message,
+    })),
+  );
 }
 
 export const DETAIL_DESCRIPTION =

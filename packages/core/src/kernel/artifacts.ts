@@ -39,6 +39,15 @@ export interface ArtifactRecord {
   readonly bundleId?: string;
   /** Id of the builder that produced it, e.g. `ios-xcodebuild`. */
   readonly builder: string;
+  /**
+   * Fingerprint of the source tree this was built from, when it could be taken.
+   *
+   * The artifact's own hash proves the file has not been touched; it says nothing about the
+   * project. Without this, editing an asset and leaving the build number alone leaves the
+   * previous artifact hashing correctly, so the build is skipped and the old binary is
+   * published. A record with no fingerprint is never reused.
+   */
+  readonly inputsDigest?: string;
   readonly builtAt: string;
   /** Full build log, kept outside the repo. */
   readonly logPath?: string;
@@ -164,16 +173,30 @@ export async function checkArtifact(record: ArtifactRecord): Promise<ArtifactChe
  *
  * Returns `undefined` for every other case, which is precisely what makes a `build` action
  * appear in the plan — and disappear from it once the build has happened.
+ *
+ * Pass `inputsDigest` to also require that the project has not changed since the build.
+ * Callers that decide *whether to build* must pass it — the artifact's own hash cannot see
+ * an edited icon. Callers that only need to know where the binary will be (the upload
+ * differs, whose path is deterministic either way) do not.
  */
 export async function usableArtifact(
   repoRoot: string,
   store: Store,
-  wanted: { readonly version?: string; readonly buildNumber?: string } = {},
+  wanted: {
+    readonly version?: string;
+    readonly buildNumber?: string;
+    readonly inputsDigest?: string;
+  } = {},
 ): Promise<ArtifactRecord | undefined> {
   const record = (await readArtifacts(repoRoot)).artifacts[store];
   if (record === undefined) return undefined;
   if (wanted.version !== undefined && record.version !== wanted.version) return undefined;
   if (wanted.buildNumber !== undefined && record.buildNumber !== wanted.buildNumber) {
+    return undefined;
+  }
+  // An absent digest on either side is "unknown", never "unchanged": a record from before
+  // the project was fingerprinted, or a tree that could not be read, both mean rebuild.
+  if (wanted.inputsDigest !== undefined && record.inputsDigest !== wanted.inputsDigest) {
     return undefined;
   }
   const check = await checkArtifact(record);

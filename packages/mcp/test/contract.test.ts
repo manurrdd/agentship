@@ -105,7 +105,12 @@ describe('secrets', () => {
     expect(responses[0]?.text).toContain('"source": "env"');
     // And the env path is explained: precedence over the keyring, profile-agnostic.
     expect(responses[0]?.text).toContain('precedence over anything stored in the OS keyring');
-  });
+    // Six real tool calls, two of which probe the machine's toolchain and keyring. That is
+    // the point — the canary has to survive the paths that actually touch credentials — but
+    // it makes this the one test here that does seconds of I/O, and it hit the default
+    // ceiling when the suite ran it alongside everything else. The number is room for real
+    // work, not cover for a regression: if this starts approaching it, something got slower.
+  }, 60_000);
 
   it('returns the credential flow without asking anyone to hand over a password', async () => {
     harness = await createMcpHarness({ stores: ['apple'] });

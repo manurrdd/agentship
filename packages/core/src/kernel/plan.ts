@@ -26,8 +26,29 @@ import { AGENTSHIP_VERSION } from './version.js';
  * and manifest reproduces every id bit-for-bit; any change — local edit or remote drift —
  * produces new ids, which is what invalidates stale approvals without bookkeeping.
  */
-// v2: the plan carries structured privacy `findings` alongside the rendered warnings.
-export const RELEASE_PLAN_VERSION = 2;
+// v3: the plan carries `blocked`, the resources that could not be diffed at all.
+export const RELEASE_PLAN_VERSION = 3;
+
+/**
+ * A resource whose differ could not produce anything, and why.
+ *
+ * A differ owns one resource of one store, and it fails for reasons that belong to that
+ * resource alone: a screenshot the manifest lists but the disk does not have, a locale with
+ * no text, a product whose price table will not resolve. Before this existed such a failure
+ * escaped `buildPlan` and there was no plan at all — so a stale path to a PNG stopped a
+ * build and an upload that had nothing to do with it, and the whole session fell out of
+ * Agentship. A resource that cannot be diffed is now exactly that: one blocked resource,
+ * reported next to a plan that still contains every action Agentship *could* work out.
+ */
+export interface BlockedResource {
+  readonly store: Store;
+  /** Resource of the differ that failed, e.g. `screenshots`. */
+  readonly resource: string;
+  /** The error's code when it was an {@link AgentshipError}, for callers that branch on it. */
+  readonly code?: string;
+  readonly reason: string;
+  readonly remediation?: string;
+}
 
 export interface PlannedAction {
   /** `<kind>:<target>:<hash16>` — readable, and self-invalidating on content change. */
@@ -79,6 +100,11 @@ export interface ReleasePlan {
   readonly snapshots: Readonly<Partial<Record<Store, PlanSnapshotMeta>>>;
   /** Ids of actions that require an approval before they can execute. */
   readonly approvalsRequired: readonly string[];
+  /**
+   * Resources that could not be diffed. Everything else in this plan is unaffected and can
+   * be applied; these are the parts of the release Agentship could not see.
+   */
+  readonly blocked: readonly BlockedResource[];
   readonly warnings: readonly string[];
   /**
    * The privacy findings behind the warnings, structured: code, severity, remediation.
@@ -179,7 +205,16 @@ export function actionId(store: Store, draft: ActionDraft, classification: Actio
     pending: draft.pending === undefined ? null : { id: draft.pending.id },
     // Sorted by path: the diff is a set of field changes, not a sequence, so the order a
     // differ happened to emit it in must not change the id (or invalidate approvals).
-    diff: [...draft.diff].sort((a, b) => a.path.localeCompare(b.path)),
+    //
+    // Only the *target* state is hashed, never the store's current value. What a user
+    // approves is what the action will make true — "set the description to X" — and that is
+    // unchanged whether the store currently says Y or Z. Including `before` meant an
+    // unrelated upload, which moves the store on, rotated the id of every other action and
+    // sent the user back to re-approve wording they had already approved. That happened
+    // sixteen times across the sessions this rule comes from.
+    diff: [...draft.diff]
+      .sort((a, b) => a.path.localeCompare(b.path))
+      .map((entry) => ({ path: entry.path, after: entry.after ?? null })),
   });
   return `${draft.kind}:${draft.target}:${hash}`;
 }
@@ -188,6 +223,7 @@ export function actionId(store: Store, draft: ActionDraft, classification: Actio
 export async function buildPlan(input: BuildPlanInput): Promise<ReleasePlan> {
   const warnings: string[] = [];
   const actions: PlannedAction[] = [];
+  const blocked: BlockedResource[] = [];
   const pendingById = new Map<string, PendingOperation>();
   const blocking = new Map<string, string[]>();
   const snapshots: Partial<Record<Store, PlanSnapshotMeta>> = {};
@@ -219,14 +255,26 @@ export async function buildPlan(input: BuildPlanInput): Promise<ReleasePlan> {
 
     const drafts: { draft: ActionDraft; resource: string }[] = [];
     for (const differ of input.registry.forStore(store)) {
-      const produced = await differ.plan({
-        store,
-        manifest: input.manifest,
-        state,
-        repoRoot: input.repoRoot,
-        ...optional('proposals', storeInput.proposals),
-        ...optional('analysis', input.analysis),
-      });
+      let produced: readonly ActionDraft[];
+      try {
+        produced = await differ.plan({
+          store,
+          manifest: input.manifest,
+          state,
+          repoRoot: input.repoRoot,
+          ...optional('proposals', storeInput.proposals),
+          ...optional('analysis', input.analysis),
+        });
+      } catch (error) {
+        // Only the differ's own call is guarded. A failure inside the planner below — two
+        // differs drafting one action, a dependency nobody satisfies — is a defect in
+        // Agentship, not in the user's project, and must still stop everything.
+        // The same applies to an unexpected raw exception from a differ: only a deliberately
+        // classified AgentshipError is a project/resource problem safe to isolate.
+        if (!AgentshipError.is(error)) throw error;
+        blocked.push(describeBlocked(store, differ.resource, error));
+        continue;
+      }
       for (const draft of produced) drafts.push({ draft, resource: differ.resource });
     }
 
@@ -324,6 +372,11 @@ export async function buildPlan(input: BuildPlanInput): Promise<ReleasePlan> {
   for (const finding of findings) {
     warnings.push(`[${finding.code}] ${finding.message} → ${finding.remediation}`);
   }
+  for (const entry of blocked) {
+    warnings.push(
+      `Nothing could be planned for ${entry.store}/${entry.resource}: ${entry.reason} The rest of this plan is unaffected.`,
+    );
+  }
 
   const planId = `plan-${shortHash({ actions: ordered.map((action) => action.id).sort() })}`;
   return {
@@ -338,8 +391,32 @@ export async function buildPlan(input: BuildPlanInput): Promise<ReleasePlan> {
     approvalsRequired: ordered
       .filter((action) => action.classification === 'needs_approval')
       .map((action) => action.id),
+    // Deliberately outside the plan id: the id exists to invalidate approvals when the work
+    // changes, and the work is the actions. A blocked resource contributes none, so a
+    // differently-worded failure must not rotate every id and re-ask for approvals given.
+    blocked: [...blocked].sort(
+      (a, b) => a.store.localeCompare(b.store) || a.resource.localeCompare(b.resource),
+    ),
     warnings,
     findings,
+  };
+}
+
+/**
+ * Turns whatever a differ threw into a report about one resource.
+ *
+ * The remediation is carried through verbatim when the error has one, because it is written
+ * for exactly this failure. What it must not do is read as an instruction to the agent: the
+ * manifest is the user's file, and a differ failing over a path in it is a question for
+ * them, not a licence to rewrite it.
+ */
+function describeBlocked(store: Store, resource: string, error: AgentshipError): BlockedResource {
+  return {
+    store,
+    resource,
+    code: error.code,
+    reason: error.message,
+    ...optional('remediation', error.remediation?.summary),
   };
 }
 

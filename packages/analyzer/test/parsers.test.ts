@@ -8,6 +8,7 @@ import {
   gradleValue,
   parsePlist,
   parseYaml,
+  pbxprojApplicationSettings,
   pbxprojConfigurations,
   pbxprojSettings,
   stripComments,
@@ -130,6 +131,43 @@ describe('pbxproj extraction', () => {
 
   it('lists build configuration names', () => {
     expect(pbxprojConfigurations(pbxproj).sort()).toEqual(['Debug', 'Release']);
+  });
+
+  it('reads only the application target when an extension appears first', () => {
+    const project = `
+/* Begin PBXNativeTarget section */
+  WIDGET /* HabitWidget */ = { buildConfigurationList = WLIST; productType = "com.apple.product-type.app-extension"; };
+  RUNNER /* Runner */ = { buildConfigurationList = ALIST; productType = "com.apple.product-type.application"; };
+/* End PBXNativeTarget section */
+/* Begin XCConfigurationList section */
+  WLIST = { buildConfigurations = (WDEBUG /* Debug */,); };
+  ALIST = { buildConfigurations = (ADEBUG /* Debug */, ARELEASE /* Release */,); };
+/* End XCConfigurationList section */
+/* Begin XCBuildConfiguration section */
+  WDEBUG = {
+    buildSettings = {
+      PRODUCT_BUNDLE_IDENTIFIER = com.example.app.Widget;
+    };
+    name = Debug;
+  };
+  ADEBUG = {
+    buildSettings = {
+      PRODUCT_BUNDLE_IDENTIFIER = com.example.app;
+      MARKETING_VERSION = 2.0;
+    };
+    name = Debug;
+  };
+  ARELEASE = {
+    buildSettings = {
+      PRODUCT_BUNDLE_IDENTIFIER = com.example.app;
+      MARKETING_VERSION = 2.0;
+    };
+    name = Release;
+  };
+/* End XCBuildConfiguration section */`;
+    const settings = pbxprojApplicationSettings(project);
+    expect(settings.get('PRODUCT_BUNDLE_IDENTIFIER')).toEqual(['com.example.app']);
+    expect(settings.get('MARKETING_VERSION')).toEqual(['2.0']);
   });
 });
 

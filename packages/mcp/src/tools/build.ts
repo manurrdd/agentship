@@ -8,11 +8,17 @@ import {
   keystorePendingOperation,
   runBuild,
 } from '@agentship/build';
-import { checkArtifact, loadManifest, readArtifacts } from '@agentship/core';
+import {
+  type AppAnalysis,
+  checkArtifact,
+  loadAnalysis,
+  loadManifest,
+  readArtifacts,
+} from '@agentship/core';
 import { z } from 'zod';
 import { type Detail, ok } from '../format.js';
 import { summarizeBuild, summarizeBuildSupport } from '../summaries.js';
-import { DETAIL_DESCRIPTION, projectDirArg, type ToolDefinition } from './types.js';
+import { DETAIL_DESCRIPTION, parseInput, projectDirArg, type ToolDefinition } from './types.js';
 
 const PLATFORMS = ['ios', 'android'] as const;
 
@@ -43,7 +49,7 @@ export const buildTool: ToolDefinition = {
   title: 'Compile and sign the app',
   description: `Produce the signed artifact a release needs: an .ipa for the App Store, an .aab for Google Play. Agentship runs the project's own build system — xcodebuild on the checked-in workspace, the repository's Gradle wrapper, or flutter build — and never rewrites the project's build files.
 
-Start with action "status". It compiles nothing and answers the three questions worth knowing before a ten-minute build: can this machine build it, what is missing, and is there already a usable artifact. An artifact that still exists and still hashes to what was recorded is reusable, and agentship_plan will not ask for a build at all.
+Start with action "status". It compiles nothing and answers the three questions worth knowing before a ten-minute build: can this machine build it, what is missing, and is there already a usable artifact. An artifact is reusable only when both its bytes and the source tree that produced it still match what was recorded; agentship_plan will not ask for a build then.
 
 Then action "build". Signing needs no extra setup on iOS — Xcode asks App Store Connect for the certificate and profile with the same key Agentship already holds. On Android it needs an upload key: if the project signs itself (key.properties or a release signingConfig), Agentship injects nothing; otherwise it uses the keystore it custodies, and if there is none, "status" says so.
 
@@ -61,7 +67,7 @@ Builds are slow (minutes) and they execute this repository's own build scripts. 
   },
 
   async handler(session, args, progress) {
-    const input = buildSchema.parse(args);
+    const input = parseInput(buildSchema, args);
     const detail: Detail = input.detail ?? 'concise';
     const repoRoot = await session.requireProject(input.projectDir);
     const manifest = await loadManifest(repoRoot);
@@ -105,9 +111,15 @@ Builds are slow (minutes) and they execute this repository's own build scripts. 
     const register = await readArtifacts(repoRoot);
 
     if (action === 'status') {
-      const support = [];
+      const analysis = await loadAnalysis(repoRoot);
+      const support: Record<string, unknown>[] = [];
       for (const platform of platforms) {
-        support.push(summarizeBuildSupport(await buildSupport(manifest, shape, platform)));
+        const platformSupport = await buildSupport(manifest, shape, platform);
+        const suggestions = suggestedInputs(platformSupport.needsInput ?? [], analysis);
+        support.push({
+          ...summarizeBuildSupport(platformSupport),
+          ...(suggestions.length === 0 ? {} : { suggestedInputs: suggestions }),
+        });
       }
       const artifacts: Record<string, unknown> = {};
       for (const [store, record] of Object.entries(register.artifacts)) {
@@ -190,10 +202,59 @@ function nextStepForStatus(
 ): string {
   const blocked = support.filter((entry) => entry['status'] !== 'supported');
   if (blocked.length > 0) {
+    if (blocked.some((entry) => Array.isArray(entry['suggestedInputs']))) {
+      return 'Relay the project-derived suggestedInputs with their source and confidence. They are evidence for filling the manifest, so do not ask the user to rediscover those values; do not write them into .agentship/agentship.yaml until the user has seen and accepted them. Then re-run status.';
+    }
     return 'Relay the remediation of every platform that is not "supported". Agentship cannot build those here; the user either fixes the cause or supplies the artifact through release.artifacts.';
   }
   if (Object.values(artifacts).some((entry) => (entry as { usable?: boolean }).usable === true)) {
     return 'A usable artifact already exists. Call agentship_plan; it will not ask for a rebuild.';
   }
   return 'Call agentship_build with action "build", or just agentship_plan — it drafts the build as an action and agentship_apply runs it in order.';
+}
+
+interface SuggestedBuildInput {
+  readonly path: string;
+  readonly value: string;
+  readonly confidence: string;
+  readonly source: string;
+  readonly note: string;
+}
+
+/** Project-derived answers for manifest gaps, carried as evidence and never written silently. */
+function suggestedInputs(
+  missing: readonly string[],
+  analysis: AppAnalysis | undefined,
+): readonly SuggestedBuildInput[] {
+  if (analysis === undefined) return [];
+  const suggestions: SuggestedBuildInput[] = [];
+  const add = (
+    path: string,
+    candidate:
+      | { readonly value: string | number; readonly confidence: string; readonly source?: string }
+      | undefined,
+  ): void => {
+    if (!missing.includes(path) || candidate === undefined || candidate.source === undefined)
+      return;
+    suggestions.push({
+      path,
+      value: String(candidate.value),
+      confidence: candidate.confidence,
+      source: candidate.source,
+      note: 'This value was read from the project. It is a suggested manifest update, not a change Agentship has made.',
+    });
+  };
+  add('release.buildNumber', analysis.versions.buildNumber);
+  add('release.version', analysis.versions.marketingVersion ?? analysis.versions.versionName);
+  if (missing.includes('build.ios.scheme') && analysis.buildHints.ios?.schemes.length === 1) {
+    suggestions.push({
+      path: 'build.ios.scheme',
+      value: analysis.buildHints.ios.schemes[0] as string,
+      confidence: 'certain',
+      source:
+        analysis.buildHints.ios.workspace ?? analysis.buildHints.ios.project ?? 'Xcode project',
+      note: 'This is the only shared scheme the project exposes. It is a suggested manifest update, not a change Agentship has made.',
+    });
+  }
+  return suggestions;
 }

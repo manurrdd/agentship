@@ -132,8 +132,23 @@ export function summarizePendingOperation(
     title: operation.title,
     actionClass: operation.actionClass,
     status: operation.status,
-    reason: operation.reason,
-    ...(operation.console === undefined ? {} : { console: operation.console }),
+    // `reason` is the paragraph explaining why a human has to do this — worth every word
+    // when someone is about to do the work, which is what `get` is for, and pure weight
+    // repeated across a dozen operations in a list. Measured, it was most of the 11 KB of
+    // pendings inside an `apply` response.
+    //
+    // The console *url* stays, at every detail level. An agent with a browser can act on an
+    // `agent_browser` operation, and the address is the one thing it needs to start; hiding
+    // it behind `full` would have made the cheapest response the one that cannot be used.
+    // The breadcrumb path and the field-by-field instructions still belong to `get`.
+    ...(detail === 'full'
+      ? {
+          reason: operation.reason,
+          ...(operation.console === undefined ? {} : { console: operation.console }),
+        }
+      : operation.console?.url === undefined
+        ? {}
+        : { console: { url: operation.console.url } }),
     ...(operation.blocking === undefined || operation.blocking.length === 0
       ? {}
       : { blocking: operation.blocking }),
@@ -165,9 +180,22 @@ export function summarizePendingOperation(
           ...(operation.fields === undefined ? {} : { fields: operation.fields.length }),
         }),
     ...(operation.verification === undefined ? {} : { verification: operation.verification }),
-    ...(operation.notes === undefined ? {} : { notes: operation.notes }),
+    // `notes` carries two very different things in one field: a short operational line
+    // ("IARC questionnaire submitted", or the local evidence that closed an item) and the
+    // catalog's multi-paragraph rationale, including the "Why a human" argument. The first
+    // belongs in a list; the second is what `get` is for. Keeping the first line preserves
+    // the short ones verbatim and drops the essays.
+    ...(operation.notes === undefined
+      ? {}
+      : { notes: detail === 'full' ? operation.notes : firstLine(operation.notes) }),
     ...(operation.updatedAt === undefined ? {} : { updatedAt: operation.updatedAt }),
   };
+}
+
+/** The first line of a note, marked when there was more of it. */
+function firstLine(text: string): string {
+  const [first = ''] = text.split('\n');
+  return first === text ? text : `${first} […]`;
 }
 
 function countBy<T extends string>(values: readonly T[]): Record<string, number> {
@@ -190,6 +218,17 @@ export function summarizePlan(plan: ReleasePlan, detail: Detail): Record<string,
     approvalsRequired: plan.approvalsRequired,
     actions: plan.actions.map((action) => summarizeAction(action, detail)),
     pending: plan.pending.map((operation) => summarizePendingOperation(operation, detail)),
+    ...(plan.blocked.length === 0
+      ? {}
+      : {
+          /**
+           * Resources Agentship could not diff at all. The actions above are unaffected and
+           * can be applied as they stand — do not treat this as a failed plan.
+           */
+          blocked: plan.blocked,
+          blockedNote:
+            "These resources could not be read, so this plan contains no actions for them. Everything else in the plan is complete and applicable. Most of these come from the manifest disagreeing with the repository — report them to the user and ask how they want them resolved; .agentship/agentship.yaml is the user's file, so never edit it to make a plan succeed unless they asked for that change.",
+        }),
     warnings: plan.warnings,
   };
 }
@@ -240,7 +279,57 @@ export function summarizeApply(result: ApplyResult, detail: Detail): Record<stri
       summarizePendingOperation(operation, detail),
     ),
     /** The plan as it stands after execution: approve against these ids, never older ones. */
-    plan: summarizePlan(result.plan, detail),
+    plan: detail === 'full' ? summarizePlan(result.plan, detail) : remainingWork(result.plan),
+  };
+}
+
+/**
+ * What is left after an apply, without repeating the plan the agent has already read.
+ *
+ * Measured on real sessions, 88% of an `apply` response was the re-serialised plan — every
+ * action with its full diff, plus every pending operation with its prose — while the
+ * outcomes, which are the answer to "what happened", were under a tenth of it. The average
+ * `apply` came to about 5,900 tokens against a declared ceiling of 10,000, and the user
+ * noticed it as money.
+ *
+ * So `concise` carries what the next decision needs: the ids to approve, and one line per
+ * action still outstanding. `detail: "full"` still returns the whole plan.
+ */
+function remainingWork(plan: ReleasePlan): Record<string, unknown> {
+  return {
+    planId: plan.planId,
+    createdAt: plan.createdAt,
+    stores: plan.stores,
+    counts: {
+      actions: plan.actions.length,
+      byClassification: countBy(plan.actions.map((action) => action.classification)),
+      pending: plan.pending.length,
+    },
+    /** Every action needing explicit human approval before `agentship_apply` will run it. */
+    approvalsRequired: plan.approvalsRequired,
+    /**
+     * Identity and classification only. The diffs are what the agent read before approving,
+     * and repeating all of them after every partial apply is what made this response four
+     * times the size of the outcomes it exists to report.
+     */
+    actions: plan.actions.map((action) => ({
+      id: action.id,
+      store: action.store,
+      kind: action.kind,
+      target: action.target,
+      classification: action.classification,
+      summary: action.summary,
+      ...(action.diff.length === 0 ? {} : { diffEntries: action.diff.length }),
+      ...(action.blockedBy.length === 0 ? {} : { blockedBy: action.blockedBy }),
+      ...(action.needsInput === undefined ? {} : { needsInput: action.needsInput }),
+    })),
+    /** Open console work only; anything already verified is not work. */
+    pending: plan.pending
+      .filter((operation) => operation.status !== 'verified')
+      .map((operation) => summarizePendingOperation(operation, 'concise')),
+    ...(plan.blocked.length === 0 ? {} : { blocked: plan.blocked }),
+    warnings: plan.warnings,
+    note: 'Trimmed after execution. Call agentship_plan with detail "full" for every diff.',
   };
 }
 

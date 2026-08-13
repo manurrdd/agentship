@@ -111,6 +111,23 @@ export function serialize(rawPayload: unknown): Serialized {
   };
 }
 
+/**
+ * Raised when a tool call's own arguments fail their schema — and never for anything else.
+ *
+ * The engine validates the user's manifest with the same library the tools validate their
+ * arguments with, so a bare `ZodError` cannot say which of the two it is. This class marks
+ * the one case the agent can fix by calling differently.
+ */
+export class InvalidToolInput extends Error {
+  readonly issues: readonly { path: string; message: string }[];
+
+  constructor(issues: readonly { path: string; message: string }[]) {
+    super('The tool arguments did not match the expected schema.');
+    this.name = 'InvalidToolInput';
+    this.issues = issues;
+  }
+}
+
 export interface ToolResponse {
   readonly content: { type: 'text'; text: string }[];
   readonly isError?: boolean;
@@ -136,9 +153,9 @@ export function fail(error: unknown): ToolResponse {
       isError: true,
     };
   }
-  // A schema violation is bad input, not a server fault: report it as such so the agent
-  // fixes the call instead of treating it as an internal bug and retrying blindly.
-  if (error instanceof ZodError) {
+  // Bad arguments are the caller's to fix, so they are reported as such — but only when the
+  // failure really came from parsing arguments. See {@link InvalidToolInput}.
+  if (error instanceof InvalidToolInput) {
     return {
       content: [
         {
@@ -148,8 +165,31 @@ export function fail(error: unknown): ToolResponse {
               code: 'INVALID_INPUT',
               message: 'The tool arguments did not match the expected schema.',
               retryable: false,
+              issues: error.issues,
+            },
+          }).text,
+        },
+      ],
+      isError: true,
+    };
+  }
+  // A schema failure from anywhere else is Agentship validating its own data — most often
+  // the user's manifest. Calling that a bad argument sent agents round a loop retrying the
+  // tool with different arguments while the real fault sat in a YAML file, so it is reported
+  // for what it is, with the offending paths still visible.
+  if (error instanceof ZodError) {
+    return {
+      content: [
+        {
+          type: 'text',
+          text: serialize({
+            error: {
+              code: 'INTERNAL',
+              message:
+                'Agentship rejected its own data while handling this call; the tool arguments were accepted. This usually means .agentship/agentship.yaml or a stored state file has a field Agentship cannot read.',
+              retryable: false,
               issues: error.issues.map((issue) => ({
-                path: issue.path.join('.'),
+                path: issue.path.map((segment) => String(segment)).join('.'),
                 message: issue.message,
               })),
             },

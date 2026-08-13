@@ -141,13 +141,23 @@ describe('writing a product', () => {
         productId: 'com.agentship.demo.pro',
         kind: 'non_consumable',
         basePrice: '12.99',
-        baseTerritory: 'US',
-        territories: { GB: '11.99' },
+        // Written in Apple's alpha-3 form: one manifest has to serve both stores, so the
+        // adapter canonicalises rather than passing the code straight through.
+        baseTerritory: 'USA',
+        territories: { GB: '11.99', IN: '199', ESP: '10.99' },
       });
+      // Each region in its own currency. This assertion used to read `currency: 'USD'` for
+      // every entry, which is what the adapter really sent: a manifest saying `IN: 199`
+      // meant ₹199 and Play was told 199 US dollars.
       expect(document?.['prices']).toEqual({
-        GB: { priceMicros: '11990000', currency: 'USD' },
+        ES: { priceMicros: '10990000', currency: 'EUR' },
+        GB: { priceMicros: '11990000', currency: 'GBP' },
+        IN: { priceMicros: '199000000', currency: 'INR' },
         US: { priceMicros: '12990000', currency: 'USD' },
       });
+      // The base territory is one region among the rest, never a second entry for the same
+      // country under the other code system.
+      expect(Object.keys(document?.['prices'] as object)).toHaveLength(4);
       // Play takes the whole resource: the listing it already had survives the update.
       expect(document?.['listings']).toMatchObject({ 'en-US': { title: 'Pro' } });
     });

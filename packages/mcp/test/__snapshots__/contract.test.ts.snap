@@ -66,7 +66,7 @@ Compile and sign the app
 
 Produce the signed artifact a release needs: an .ipa for the App Store, an .aab for Google Play. Agentship runs the project's own build system — xcodebuild on the checked-in workspace, the repository's Gradle wrapper, or flutter build — and never rewrites the project's build files.
 
-Start with action "status". It compiles nothing and answers the three questions worth knowing before a ten-minute build: can this machine build it, what is missing, and is there already a usable artifact. An artifact that still exists and still hashes to what was recorded is reusable, and agentship_plan will not ask for a build at all.
+Start with action "status". It compiles nothing and answers the three questions worth knowing before a ten-minute build: can this machine build it, what is missing, and is there already a usable artifact. An artifact is reusable only when both its bytes and the source tree that produced it still match what was recorded; agentship_plan will not ask for a build then.
 
 Then action "build". Signing needs no extra setup on iOS — Xcode asks App Store Connect for the certificate and profile with the same key Agentship already holds. On Android it needs an upload key: if the project signs itself (key.properties or a release signingConfig), Agentship injects nothing; otherwise it uses the keystore it custodies, and if there is none, "status" says so.
 
@@ -110,7 +110,7 @@ Calling it with no approvals at all is useful and safe — everything classified
 
 Read the response in this order:
 1. outcomes — what ran (done / failed / skipped) and what was withheld and why.
-2. staleApprovals and driftDetected — the store moved, so some approvals no longer match. This is expected: applying part of a plan changes the store, so the ids rotate. Do not treat it as an error and do not retry the same ids.
+2. staleApprovals and driftDetected — the store moved, so some approvals no longer match. An action id now covers only what the action will make true, so it survives unrelated store movement; a planId does not, because it names the whole set. Re-plan, show the user what changed, and approve against the new ids. Do not treat it as an error and do not retry the same ids.
 3. plan — the freshly built plan. Present its diffs again and ask for approval against THESE ids.
 4. emittedPending — console work that now blocks progress; continue with agentship_pending.
 
@@ -127,7 +127,7 @@ Two kinds, and the difference matters:
 - agent_browser — you may drive your own browser through the steps, if you have one. Show the user what you are about to submit first.
 - human_only — a human must do it: identity, tax and banking details, legal agreements, two-factor authentication, anything binding. Never attempt these, never ask for the credentials they need. Hand over the steps and wait.
 
-Flow: get the instructions -> the work happens in the console -> "complete" -> "verify". Verification re-reads the store; if it answers verified:false with "no verifier registered", that is honest, not a failure — Agentship simply cannot confirm this one automatically, so ask the user to confirm instead.
+Flow: get the instructions -> the work happens in the console -> "complete" -> "verify". Verification re-reads the store; if it answers verified:false with "no verifier registered", that is honest, not a failure — Agentship simply cannot confirm this one automatically, so ask the user to confirm instead. A plain "list" stays fast and offline; use refresh:true when you explicitly want it to reconcile every checkable status first.
 
 Verify several operations in ONE call with "ids". Reading a store is the slow part — a dozen calls, and Google serialises them per package — so one snapshot is captured and shared by the whole batch. Never issue verifies in parallel instead: they queue behind each other and each pays for its own snapshot.
 

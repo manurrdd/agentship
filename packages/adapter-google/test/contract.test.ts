@@ -1,4 +1,5 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { lstat, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { GOOGLE_CAPABILITIES, GoogleAdapter } from '../src/index.js';
@@ -380,73 +381,94 @@ describe('setMetadata', () => {
 
 describe('syncScreenshots', () => {
   it('stages one tree per locale, device and slot and syncs it in a single edit', async () => {
-    await withGoogleEnvironment(async () => {
-      let staged: string[] = [];
-      const { adapter: google, runner } = adapter([
-        versionRoute(),
-        {
-          match: 'images sync',
-          stdout: await fixture('images-sync-result.json'),
-          inspect: async (invocation) => {
-            const dir = flagValue(invocation.args.join(' '), '--dir') ?? '';
-            staged = await listTree(dir);
+    const sourceDir = await mkdtemp(join(tmpdir(), 'agentship-google-screenshots-'));
+    const a = join(sourceDir, 'a.png');
+    const b = join(sourceDir, 'b.png');
+    const feature = join(sourceDir, 'feature.png');
+    await Promise.all([writeFile(a, 'a'), writeFile(b, 'b'), writeFile(feature, 'feature')]);
+    let stagedIsSymlink = true;
+    try {
+      await withGoogleEnvironment(async () => {
+        let staged: string[] = [];
+        const { adapter: google, runner } = adapter([
+          versionRoute(),
+          {
+            match: 'images sync',
+            stdout: await fixture('images-sync-result.json'),
+            inspect: async (invocation) => {
+              const dir = flagValue(invocation.args.join(' '), '--dir') ?? '';
+              staged = await listTree(dir);
+              stagedIsSymlink = (
+                await lstat(join(dir, 'en-US', 'phoneScreenshots', '000-a.png'))
+              ).isSymbolicLink();
+            },
           },
-        },
-      ]);
+        ]);
 
-      const result = await google.syncScreenshots(testContext(), APP, {
-        prune: true,
-        sets: [
-          {
-            locale: 'en-US',
-            device: 'phone',
-            assets: [
-              { path: '/tmp/b.png', sha256: 'b'.repeat(64), order: 1 },
-              { path: '/tmp/a.png', sha256: 'a'.repeat(64), order: 0 },
-            ],
-          },
-          { locale: 'en-US', device: 'tablet_10', assets: [] },
-          {
-            locale: 'en-US',
-            device: 'phone',
-            slot: 'feature_graphic',
-            assets: [{ path: '/tmp/feature.png', sha256: 'c'.repeat(64) }],
-          },
-          { locale: 'en-US', device: 'vision', assets: [] },
-        ],
+        const result = await google.syncScreenshots(testContext(), APP, {
+          prune: true,
+          sets: [
+            {
+              locale: 'en-US',
+              device: 'phone',
+              assets: [
+                { path: b, sha256: 'b'.repeat(64), order: 1 },
+                { path: a, sha256: 'a'.repeat(64), order: 0 },
+              ],
+            },
+            { locale: 'en-US', device: 'tablet_10', assets: [] },
+            {
+              locale: 'en-US',
+              device: 'phone',
+              slot: 'feature_graphic',
+              assets: [{ path: feature, sha256: 'c'.repeat(64) }],
+            },
+            { locale: 'en-US', device: 'vision', assets: [] },
+          ],
+        });
+
+        expect(staged).toContain('en-US/phoneScreenshots/000-a.png');
+        expect(staged).toContain('en-US/phoneScreenshots/001-b.png');
+        expect(staged).toContain('en-US/featureGraphic/000-feature.png');
+        expect(staged).toContain('en-US/tenInchScreenshots');
+        // Google has no vision-device screenshots, so the set is reported, not dropped.
+        expect(result.warnings?.join(' ')).toContain('vision');
+
+        const command = runner.commands().find((c) => c.includes('images sync')) ?? '';
+        expect(command).toContain('--delete');
+        expect(result.details).toMatchObject({ uploaded: 2, skipped: 3 });
+        expect(result.changed).toBe(true);
+        expect(stagedIsSymlink).toBe(false);
       });
-
-      expect(staged).toContain('en-US/phoneScreenshots/000-a.png');
-      expect(staged).toContain('en-US/phoneScreenshots/001-b.png');
-      expect(staged).toContain('en-US/featureGraphic/000-feature.png');
-      expect(staged).toContain('en-US/tenInchScreenshots');
-      // Google has no vision-device screenshots, so the set is reported, not dropped.
-      expect(result.warnings?.join(' ')).toContain('vision');
-
-      const command = runner.commands().find((c) => c.includes('images sync')) ?? '';
-      expect(command).toContain('--delete');
-      expect(result.details).toMatchObject({ uploaded: 2, skipped: 3 });
-      expect(result.changed).toBe(true);
-    });
+    } finally {
+      await rm(sourceDir, { recursive: true, force: true });
+    }
   });
 
   it('reports no change when everything already matched by digest', async () => {
-    await withGoogleEnvironment(async () => {
-      const { adapter: google } = adapter([
-        versionRoute(),
-        { match: 'images sync', stdout: '{"uploaded":0,"skipped":4,"deleted":0,"total":4}' },
-      ]);
-      const result = await google.syncScreenshots(testContext(), APP, {
-        sets: [
-          {
-            locale: 'en-US',
-            device: 'phone',
-            assets: [{ path: '/tmp/a.png', sha256: 'a'.repeat(64) }],
-          },
-        ],
+    const sourceDir = await mkdtemp(join(tmpdir(), 'agentship-google-screenshot-'));
+    const source = join(sourceDir, 'a.png');
+    await writeFile(source, 'a');
+    try {
+      await withGoogleEnvironment(async () => {
+        const { adapter: google } = adapter([
+          versionRoute(),
+          { match: 'images sync', stdout: '{"uploaded":0,"skipped":4,"deleted":0,"total":4}' },
+        ]);
+        const result = await google.syncScreenshots(testContext(), APP, {
+          sets: [
+            {
+              locale: 'en-US',
+              device: 'phone',
+              assets: [{ path: source, sha256: 'a'.repeat(64) }],
+            },
+          ],
+        });
+        expect(result.changed).toBe(false);
       });
-      expect(result.changed).toBe(false);
-    });
+    } finally {
+      await rm(sourceDir, { recursive: true, force: true });
+    }
   });
 });
 

@@ -120,6 +120,17 @@ describe('apple/metadata', () => {
     await run.cleanup();
   });
 
+  it('ignores the final newline added by store tooling', async () => {
+    const state = await stateOf('apple', {
+      localizations: new Map([
+        ['en-US', { name: 'Mock App\r\n', description: 'Fresh new description.\n' }],
+      ]),
+    });
+    const run = await runDiffer(appleMetadataDiffer(), manifestFor(), state);
+    expect(run.drafts).toEqual([]);
+    await run.cleanup();
+  });
+
   it('treats renaming a live app as destructive', async () => {
     const manifest = manifestFor({
       metadata: {

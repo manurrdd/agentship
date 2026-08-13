@@ -1,4 +1,10 @@
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { AgentshipError, createLogger, saveManifest } from '@agentship/core';
 import { afterEach, describe, expect, it } from 'vitest';
+import { testManifest } from '../../core/test/kernel-helpers.js';
+import { Session } from '../src/session.js';
 import { AGENTSHIP_TOOL_NAMES } from '../src/tools/index.js';
 import { actionsOf, createMcpHarness, type McpHarness, outcomesOf } from './helpers.js';
 
@@ -115,7 +121,14 @@ describe('agentship MCP session', () => {
     });
 
     const planned = await harness.call('agentship_plan', { projectDir: harness.repoRoot });
+    const snapshotsBeforeList = harness.adapters.get('google')?.effects.snapshots ?? 0;
     const pendingList = await harness.call('agentship_pending', { action: 'list' });
+    // Listing is local by default: an ordinary itinerary must not pay for a slow store
+    // snapshot or hang behind the store CLI. Reconciliation is explicit and batched.
+    expect(harness.adapters.get('google')?.effects.snapshots).toBe(snapshotsBeforeList);
+    expect((pendingList.payload['refreshAvailable'] as string[]).length).toBeGreaterThan(0);
+    await harness.call('agentship_pending', { action: 'list', refresh: true });
+    expect(harness.adapters.get('google')?.effects.snapshots).toBeGreaterThan(snapshotsBeforeList);
     const operations = pendingList.payload['pending'] as {
       id: string;
       status: string;
@@ -240,6 +253,67 @@ describe('agentship MCP session', () => {
     expect(status.payload['artifacts']).toEqual({});
   });
 
+  /**
+   * An itinerary is only useful if it lists work that is actually left.
+   *
+   * Console work is finished in a browser, so Agentship never observes it happening — the
+   * store is the only witness. An explicit refreshed list closes stale entries in one batch;
+   * the ordinary list remains local so merely viewing the itinerary never hangs on a store.
+   */
+  it('closes pending work the store already shows as done when listing with refresh', async () => {
+    harness = await createMcpHarness({
+      stores: ['google'],
+      state: () => ({ contentRatingDone: false }),
+    });
+    await harness.call('agentship_plan', { projectDir: harness.repoRoot });
+
+    const before = await harness.call('agentship_pending', { action: 'list' });
+    const open = (before.payload['pending'] as { id: string; status: string }[]).find((operation) =>
+      operation.id.includes('content-rating'),
+    );
+    expect(open?.status).toBe('open');
+
+    // The user does it in the console; nobody tells Agentship.
+    const adapter = harness.adapters.get('google');
+    if (adapter !== undefined) adapter.state.contentRatingDone = true;
+
+    const after = await harness.call('agentship_pending', { action: 'list', refresh: true });
+    const closed = (after.payload['pending'] as { id: string; status: string }[]).find(
+      (operation) => operation.id.includes('content-rating'),
+    );
+    expect(closed?.status).toBe('verified');
+    expect((after.payload['counts'] as { open: number }).open).toBeLessThan(
+      (before.payload['counts'] as { open: number }).open,
+    );
+  });
+
+  /**
+   * `list`, `get` and `verify` have to agree about which operations exist.
+   *
+   * The first-release itinerary comes from the catalog, not from a plan — nothing has been
+   * planned yet, because the app record a plan needs is what the itinerary is telling the
+   * user to create. `list` showed that step and `get` explained it, but `verify` answered
+   * `PLAN_NOT_FOUND`, so the one thing the user had just been told to do was the one thing
+   * they could not confirm having done.
+   */
+  it('verifies a first-release step the catalog knows and no plan has emitted', async () => {
+    harness = await createMcpHarness({ stores: ['apple'] });
+    const id = 'apple:create-app-record';
+
+    const listed = await harness.call('agentship_pending', {
+      action: 'list',
+      projectDir: harness.repoRoot,
+    });
+    expect((listed.payload['pending'] as { id: string }[]).map((o) => o.id)).toContain(id);
+    expect((await harness.call('agentship_pending', { action: 'get', id })).isError).toBe(false);
+
+    const verified = await harness.call('agentship_pending', { action: 'verify', id });
+    expect(verified.isError).toBe(false);
+    const results = verified.payload['verifications'] as { id: string; verified: boolean }[];
+    expect(results[0]?.id).toBe(id);
+    expect(results[0]?.verified).toBe(true);
+  });
+
   it('refuses to work without a project and says how to fix it', async () => {
     harness = await createMcpHarness();
     const result = await harness.call('agentship_plan', {});
@@ -247,5 +321,65 @@ describe('agentship MCP session', () => {
     const error = result.payload['error'] as { code: string; remediation?: { summary: string } };
     expect(error.code).toBe('CONFIG_NOT_FOUND');
     expect(error.remediation?.summary).toContain('agentship_analyze');
+  });
+});
+
+/**
+ * Which project a call with no arguments is about.
+ *
+ * The session only remembers a project for as long as the server process lives, so an agent
+ * whose context was compacted — or that simply comes back the next day — used to be told
+ * "no project directory is set" for a repository sitting right next to the working
+ * directory. Recovering from that is mechanical, so the session does it, but only where
+ * there is nothing to guess.
+ */
+describe('resolving the project when the session has forgotten it', () => {
+  const silent = createLogger({ level: 'silent', sinks: [] });
+  const dirs: string[] = [];
+
+  afterEach(async () => {
+    await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  });
+
+  async function tree(projects: readonly string[]): Promise<string> {
+    const root = await mkdtemp(join(tmpdir(), 'agentship-cwd-'));
+    dirs.push(root);
+    for (const project of projects) {
+      await mkdir(join(root, project), { recursive: true });
+      await saveManifest(join(root, project), testManifest({ stores: ['apple'] }));
+    }
+    return root;
+  }
+
+  it('adopts an initialised project at the working directory', async () => {
+    const root = await tree(['.']);
+    await expect(
+      new Session({ logger: silent, workingDirectory: root }).requireProject(),
+    ).resolves.toBe(root);
+  });
+
+  it('adopts the single project below the working directory', async () => {
+    const root = await tree(['app']);
+    await expect(
+      new Session({ logger: silent, workingDirectory: root }).requireProject(),
+    ).resolves.toBe(join(root, 'app'));
+  });
+
+  it('refuses to choose between several, and names them', async () => {
+    const root = await tree(['ios-app', 'android-app']);
+    const error = await new Session({ logger: silent, workingDirectory: root })
+      .requireProject()
+      .catch((cause: unknown) => cause);
+    expect(AgentshipError.is(error)).toBe(true);
+    expect((error as AgentshipError).code).toBe('CONFIG_NOT_FOUND');
+    expect((error as AgentshipError).details?.['candidates']).toHaveLength(2);
+  });
+
+  it('never adopts a directory that is not an Agentship project', async () => {
+    const root = await tree([]);
+    await mkdir(join(root, 'some-repo'), { recursive: true });
+    await expect(
+      new Session({ logger: silent, workingDirectory: root }).requireProject(),
+    ).rejects.toMatchObject({ code: 'CONFIG_NOT_FOUND' });
   });
 });

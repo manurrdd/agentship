@@ -31,6 +31,8 @@ export interface Route {
   readonly exitCode?: number;
   /** Answer this route at most once, so a sequence of identical calls can differ. */
   readonly once?: boolean;
+  /** Inspect a staged input while its temporary directory still exists. */
+  readonly inspect?: (invocation: ToolInvocation) => void | Promise<void>;
 }
 
 export interface RecordedCall {
@@ -74,6 +76,7 @@ export function fakeRunner(routes: readonly Route[]): FakeRunner {
       };
     }
     if (route.once === true) consumed.add(index);
+    await route.inspect?.(invocation);
     return {
       stdout: route.stdout ?? '',
       stderr: route.stderr ?? '',

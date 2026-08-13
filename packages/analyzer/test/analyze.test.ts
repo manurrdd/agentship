@@ -1,3 +1,6 @@
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AppAnalysis } from '@agentship/core';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -113,6 +116,64 @@ describe('Flutter', () => {
     const purchases = analysis.privacySignals.find((s) => s.dataType === 'purchases');
     expect(purchases?.sdkIds).toContain('play-billing');
     expect(purchases?.confidence).toBe('inferred');
+  });
+});
+
+describe('an app nested directly under app/', () => {
+  it('selects the Flutter project itself, not its contained Xcode project', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'agentship-nested-app-'));
+    try {
+      await mkdir(join(root, 'app', 'ios', 'Runner.xcodeproj'), { recursive: true });
+      await mkdir(join(root, 'app', 'ios', 'Runner'), { recursive: true });
+      await mkdir(join(root, 'app', 'android', 'app'), { recursive: true });
+      await writeFile(
+        join(root, 'app', 'pubspec.yaml'),
+        'name: nested_app\nversion: 2.3.4+57\ndependencies:\n  flutter:\n    sdk: flutter\n',
+      );
+      await writeFile(join(root, 'app', 'android', 'settings.gradle'), "include ':app'\n");
+      await writeFile(
+        join(root, 'app', 'android', 'app', 'build.gradle'),
+        'android { defaultConfig { applicationId "com.example.nested" versionCode 57 versionName "2.3.4" } }',
+      );
+      await writeFile(
+        join(root, 'app', 'ios', 'Runner', 'Info.plist'),
+        '<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string></dict></plist>',
+      );
+      await writeFile(
+        join(root, 'app', 'ios', 'Runner.xcodeproj', 'project.pbxproj'),
+        `/* Begin PBXNativeTarget section */
+WIDGET /* Widget */ = { buildConfigurationList = WLIST; productType = "com.apple.product-type.app-extension"; };
+RUNNER /* Runner */ = { buildConfigurationList = ALIST; productType = "com.apple.product-type.application"; };
+/* End PBXNativeTarget section */
+/* Begin XCConfigurationList section */
+WLIST = { buildConfigurations = (WDEBUG,); };
+ALIST = { buildConfigurations = (ADEBUG,); };
+/* End XCConfigurationList section */
+/* Begin XCBuildConfiguration section */
+WDEBUG = {
+  buildSettings = {
+    PRODUCT_BUNDLE_IDENTIFIER = com.example.nested.Widget;
+  };
+  name = Debug;
+};
+ADEBUG = {
+  buildSettings = {
+    PRODUCT_BUNDLE_IDENTIFIER = com.example.nested;
+  };
+  name = Debug;
+};
+/* End XCBuildConfiguration section */`,
+      );
+
+      const analysis = await analyzeApp(root, { now: NOW });
+      expect(analysis.buildHints.appDir).toBe('app');
+      expect(analysis.framework.framework).toBe('flutter');
+      expect(analysis.platforms).toEqual(['ios', 'android']);
+      expect(analysis.identity.bundleId?.value).toBe('com.example.nested');
+      expect(analysis.versions.buildNumber?.value).toBe('57');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
 

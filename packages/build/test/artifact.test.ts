@@ -51,6 +51,43 @@ describe('reading archives', () => {
     });
   });
 
+  // Xcode writes the packaged Info.plist as a binary plist, so this is the only shape a
+  // real exported archive ever has. It regressed silently once because every fixture was
+  // XML: the reader failed on every artifact a user actually built.
+  it('reads an .ipa whose Info.plist is a binary plist, alongside neighbouring keys', async () => {
+    space = await scratch();
+    const path = await space.file(
+      'binary.ipa',
+      makeIpa({
+        bundleId: 'com.example.binary',
+        version: '3.0.1',
+        buildNumber: '412',
+        extra: {
+          CFBundleName: 'Ejemplo — ünïcode',
+          MinimumOSVersion: '14.0',
+          LSRequiresIPhoneOS: true,
+          UIRequiredDeviceCapabilities: ['arm64'],
+          CFBundleNumericThing: 42,
+        },
+      }),
+    );
+    await expect(inspectIpa(path)).resolves.toEqual({
+      bundleId: 'com.example.binary',
+      version: '3.0.1',
+      buildNumber: '412',
+      unverified: [],
+    });
+  });
+
+  it('still reads an .ipa whose Info.plist is XML', async () => {
+    space = await scratch();
+    const path = await space.file(
+      'xml.ipa',
+      makeIpa({ bundleId: 'com.example.xml', version: '1.2.3', buildNumber: '9', xml: true }),
+    );
+    await expect(inspectIpa(path)).resolves.toMatchObject({ bundleId: 'com.example.xml' });
+  });
+
   it('rejects an .ipa with no application payload', async () => {
     space = await scratch();
     const path = await space.file('broken.ipa', makeZip([{ name: 'README', contents: 'nope' }]));

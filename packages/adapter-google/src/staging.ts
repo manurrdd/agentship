@@ -1,4 +1,4 @@
-import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { copyFile, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import {
   ensureDir,
@@ -18,7 +18,8 @@ import { GOOGLE_SCREENSHOT_TYPES, GOOGLE_SLOT_TYPES, LISTING_FILES } from './com
  * workaround; it is how Agentship gets all-or-nothing semantics for a multi-locale change.
  *
  * Trees are built under `AGENTSHIP_HOME` (0700) and removed in a `finally`. Images are
- * symlinked rather than copied: a screenshot set runs to tens of megabytes.
+ * copied into them: both store CLIs have treated symlink staging inconsistently (`asc`
+ * rejects it explicitly, while `gpc` can skip the links and report a false no-op).
  */
 
 export interface StagedListing {
@@ -102,7 +103,7 @@ export interface StagedImages {
  * Builds the `<language>/<imageType>/` tree `gpc listings images sync` expects.
  *
  * Ordering matters to Play when `--delete` is used, and `gpc` sorts by file name, so each
- * link is prefixed with its index.
+ * file is prefixed with its index.
  */
 export async function withImageTree<T>(
   sets: readonly ImageSet[],
@@ -129,7 +130,7 @@ export async function withImageTree<T>(
         (a, b) => (a.order ?? 0) - (b.order ?? 0) || a.path.localeCompare(b.path),
       );
       for (const [index, asset] of ordered.entries()) {
-        await symlink(
+        await copyFile(
           asset.path,
           join(typeDir, `${String(index).padStart(3, '0')}-${basename(asset.path)}`),
         );

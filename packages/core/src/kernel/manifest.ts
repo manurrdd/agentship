@@ -354,10 +354,19 @@ export async function loadManifest(repoRoot: string): Promise<AgentshipManifest>
 
   const result = ManifestSchema.safeParse(parsed);
   if (!result.success) {
-    throw new AgentshipError(ERROR_CODES.CONFIG_MANIFEST_INVALID, `${path} failed validation.`, {
-      details: { issues: z.treeifyError(result.error) },
-      remediation: { summary: `Fix the reported fields in ${path}.` },
-    });
+    const issues = flattenIssues(result.error);
+    throw new AgentshipError(
+      ERROR_CODES.CONFIG_MANIFEST_INVALID,
+      `${path} failed validation: ${describeIssues(issues)}`,
+      {
+        details: { issues },
+        remediation: {
+          // The manifest is the user's file. A validation failure is something to show them,
+          // not a licence to rewrite their configuration until a plan succeeds.
+          summary: `Show the user these fields in ${path} and ask how they should read; do not edit the manifest on their behalf unless they ask for the change.`,
+        },
+      },
+    );
   }
   return result.data;
 }
@@ -411,12 +420,65 @@ export async function setManifestValue(
   if (!result.success) {
     throw new AgentshipError(
       ERROR_CODES.CONFIG_MANIFEST_INVALID,
-      `Setting ${path.join('.')} would make ${filePath} invalid.`,
-      { details: { issues: z.treeifyError(result.error) } },
+      `Setting ${path.join('.')} would make ${filePath} invalid: ${describeIssues(
+        flattenIssues(result.error),
+      )}`,
+      { details: { issues: flattenIssues(result.error) } },
     );
   }
   await writeFile(filePath, doc.toString(), { mode: FILE_MODE });
   return filePath;
+}
+
+/** One field the manifest schema rejected, addressed by its dot path. */
+export interface ManifestIssue {
+  /** Dot path with array indices, e.g. `privacy.dataPractices[2].purpose`. */
+  readonly path: string;
+  readonly message: string;
+}
+
+/**
+ * Flattens a schema failure into a list of `(path, message)` pairs.
+ *
+ * Zod's tree mirrors the manifest's nesting, and everything that carries a validation
+ * failure to an agent has depth limits — the redactor that scrubs tool responses cuts at
+ * eight levels. A manifest nests deeply enough to reach that, so the tree arrived as
+ * `{"declarationStatus": {"errors": "[truncated]"}}`: the agent was told the file was
+ * invalid and given no way to learn why, and could only guess at the manifest — which is
+ * both slow and precisely the thing it should not be doing to someone's configuration.
+ *
+ * A flat list has one level whatever the manifest looks like, so it always arrives whole.
+ */
+export function flattenIssues(error: z.ZodError): readonly ManifestIssue[] {
+  return error.issues
+    .map((issue) => ({
+      path:
+        issue.path.length === 0
+          ? '(root)'
+          : issue.path
+              .map((segment, index) =>
+                typeof segment === 'number'
+                  ? `[${segment}]`
+                  : index === 0
+                    ? String(segment)
+                    : `.${String(segment)}`,
+              )
+              .join(''),
+      message: issue.message,
+    }))
+    .sort((a, b) => a.path.localeCompare(b.path) || a.message.localeCompare(b.message));
+}
+
+/** Enough issues in the message to act on; `details.issues` always carries all of them. */
+const MAX_DESCRIBED_ISSUES = 5;
+
+function describeIssues(issues: readonly ManifestIssue[]): string {
+  const shown = issues
+    .slice(0, MAX_DESCRIBED_ISSUES)
+    .map((issue) => `${issue.path} — ${issue.message}`)
+    .join('; ');
+  const rest = issues.length - Math.min(issues.length, MAX_DESCRIBED_ISSUES);
+  return rest > 0 ? `${shown}; and ${rest} more` : shown;
 }
 
 /** One value the user still has to provide before the affected section can be planned. */

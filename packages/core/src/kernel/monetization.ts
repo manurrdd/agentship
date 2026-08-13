@@ -92,10 +92,28 @@ const PriceSchema = z
      * before anything is set; `manual` uses only what `territories` lists. Neither sets a
      * price without an approval — the strategy decides what is proposed, never whether the
      * user is asked.
+     *
+     * Omit it and the manifest decides: listing `territories` *is* the statement that these
+     * prices were chosen, so nothing else is proposed; listing none leaves conversion as the
+     * only way to reach more than one country. It used to default to `convert` outright,
+     * which meant a user who had decided 175 prices by hand also got the store's automatic
+     * table for everything they had not listed — the opposite of what writing them down
+     * means, and reported as "the automatic prices came out, you did not apply mine".
      */
-    strategy: z.enum(['convert', 'manual']).default('convert'),
+    strategy: z.enum(['convert', 'manual']).optional(),
     /** Explicit per-territory prices, which always win over a conversion. */
     territories: z.record(NonEmpty, Money).optional(),
+    /**
+     * What to do with a price that is not one of the shapes stores and customers expect.
+     *
+     * `exact` (the default) sends the number as written and says in the plan when it looks
+     * unusual — `1.82` where every comparable app charges `1.99`, or an amount App Store
+     * Connect has no price point for and will simply reject. `pretty` adopts the nearest
+     * conventional price instead, and shows the change in the diff before anything is set.
+     *
+     * Never silent either way: rounding someone's price is a decision about their revenue.
+     */
+    rounding: z.enum(['exact', 'pretty']).optional(),
   })
   .strict();
 

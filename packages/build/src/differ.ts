@@ -19,6 +19,7 @@ import {
   type Store,
 } from '@agentship/core';
 import { runBuild } from './build.js';
+import { fingerprintBuildInputs } from './inputs.js';
 import { buildSupport, detectProject } from './matrix.js';
 import type { BuildPlatform } from './types.js';
 
@@ -181,7 +182,14 @@ async function suppliedArtifact(
   };
 }
 
-/** A previously built artifact that is still exactly what the release asks for. */
+/**
+ * A previously built artifact that is still exactly what the release asks for.
+ *
+ * "Exactly" includes the project it was built from. A matching version, build number and
+ * artifact hash only prove the file has not been touched — they are all still satisfied
+ * after an icon is replaced, which is how a stale binary gets published. So the source tree
+ * is fingerprinted too, and a record without a matching fingerprint is not reused.
+ */
 async function usableRecord(
   input: DifferInput,
   store: Store,
@@ -192,6 +200,10 @@ async function usableRecord(
   if (record === undefined) return undefined;
   if (record.version !== version) return undefined;
   if (buildNumber !== undefined && record.buildNumber !== buildNumber) return undefined;
+  if (record.inputsDigest === undefined) return undefined;
+  const shape = await detectProject(input.repoRoot, input.manifest);
+  const fingerprint = await fingerprintBuildInputs(shape.appDir);
+  if (fingerprint === undefined || fingerprint.digest !== record.inputsDigest) return undefined;
   const check = await checkArtifact(record);
   return check.valid ? record : undefined;
 }

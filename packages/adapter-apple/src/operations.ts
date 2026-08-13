@@ -1,4 +1,4 @@
-import { mkdtemp, rm, symlink } from 'node:fs/promises';
+import { copyFile, mkdtemp, rm } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import {
   type AdapterContext,
@@ -310,9 +310,13 @@ function pick<T extends object, K extends keyof T>(source: T, key: K): Pick<T, K
  *
  * `asc screenshots upload` takes a *directory* and, with `--skip-existing`, leaves alone
  * every file whose MD5 App Store Connect already recorded. Agentship's plan is a list of
- * files that may live anywhere, so each set is staged into a private directory of symlinks
- * before the upload. Symlinks, not copies: a screenshot set can be tens of megabytes and
- * copying it would double the I/O for no benefit.
+ * files that may live anywhere, so each set is staged into a private directory before the
+ * upload.
+ *
+ * Copies, not symlinks. Staging by link is cheaper and was the original design, but neither
+ * CLI handles it: `asc` refuses a symlinked screenshot outright, and `gpc` silently skips
+ * the links and then reports success — an upload that changed nothing while claiming it had.
+ * Doubling the I/O is a small price for an operation that means what it says.
  *
  * The staging directory lives under `AGENTSHIP_HOME` (0700) and is removed in a `finally`.
  */
@@ -393,11 +397,12 @@ export async function syncAppleScreenshots(
 }
 
 /**
- * Presents a set of files as one directory without copying them.
+ * Presents a set of files as one self-contained directory.
  *
  * Ordering matters to the store, and `asc` sorts by file name, so each link is prefixed
  * with its index. Ties in `order` fall back to the source path, which makes the result
- * deterministic for the same plan.
+ * deterministic for the same plan. These must be regular files: `asc screenshots upload`
+ * explicitly refuses symlinks, even when they point at readable PNGs.
  */
 async function withStagedSet(
   assets: readonly { path: string; sha256: string; order?: number }[],
@@ -411,7 +416,7 @@ async function withStagedSet(
     );
     for (const [index, asset] of ordered.entries()) {
       const name = `${String(index).padStart(3, '0')}-${basename(asset.path)}`;
-      await symlink(asset.path, join(directory, name));
+      await copyFile(asset.path, join(directory, name));
     }
     await fn(directory);
   } finally {

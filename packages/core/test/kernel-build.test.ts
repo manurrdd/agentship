@@ -299,6 +299,44 @@ describe('the artifact register', () => {
     }
   });
 
+  /**
+   * The artifact hash proves the *file* is untouched; it says nothing about the project.
+   * Replacing an app icon and leaving the build number alone satisfies every other check,
+   * which is how a release can go out carrying the previous binary.
+   */
+  it('refuses an artifact whose source tree has moved on, and one that never recorded it', async () => {
+    const harness = await buildHarness();
+    try {
+      await harness.kernel.apply({ planId: (await harness.kernel.plan()).planId });
+      const manifest = testManifest({ stores: ['apple'] });
+      const wanted = {
+        version: manifest.release.version,
+        buildNumber: manifest.release.buildNumber as string,
+      };
+      const record = (await readArtifacts(harness.repoRoot)).artifacts.apple as ArtifactRecord;
+
+      // The fake runner records no fingerprint, which is also what an artifact built by an
+      // earlier Agentship looks like: unknown inputs, so never reusable.
+      expect(record.inputsDigest).toBeUndefined();
+      expect(
+        await usableArtifact(harness.repoRoot, 'apple', { ...wanted, inputsDigest: 'abc123' }),
+      ).toBeUndefined();
+
+      await recordArtifact(harness.repoRoot, { ...record, inputsDigest: 'abc123' });
+      expect(
+        await usableArtifact(harness.repoRoot, 'apple', { ...wanted, inputsDigest: 'abc123' }),
+      ).toBeDefined();
+      // The icon changed: same artifact bytes, same version, different project.
+      expect(
+        await usableArtifact(harness.repoRoot, 'apple', { ...wanted, inputsDigest: 'def456' }),
+      ).toBeUndefined();
+      // A caller that only wants to know where the binary is still gets it.
+      expect(await usableArtifact(harness.repoRoot, 'apple', wanted)).toBeDefined();
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   it('derives the artifact path from the release, so an upload can be planned first', () => {
     const path = plannedArtifactPath('/repo', 'apple', 'ipa', '1.2.3', '45');
     expect(path).toBe('/repo/.agentship/build/apple/apple-1.2.3-45.ipa');

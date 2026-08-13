@@ -112,6 +112,59 @@ describe('apple/products', () => {
     expect(gb?.note).toContain('conversion');
   });
 
+  /**
+   * With no `strategy` written, the manifest answers the question itself.
+   *
+   * It used to default to `convert`, so a user who had decided every price by hand *also*
+   * received the store's automatic table for the countries they had not listed — which is
+   * how "the automatic prices came out, you did not apply mine" happened. Listing
+   * territories is the statement that these prices were chosen.
+   */
+  it('proposes nothing of its own when the manifest lists the territories', async () => {
+    const differ = appleProductsDiffer();
+    const drafts = await differ.plan({
+      store: 'apple',
+      manifest: manifestFor({
+        monetization: {
+          products: [
+            subscription({
+              price: { base: '4.99', baseTerritory: 'US', territories: { ESP: '4.49' } },
+            }),
+          ],
+        },
+      }),
+      state: await stateOf('apple', productState()),
+      repoRoot: '/tmp',
+      proposals: CONVERTING,
+    });
+    const pricing = drafts.find((draft) => draft.kind === 'set_product_pricing');
+    const paths = (pricing?.diff.map((entry) => entry.path) ?? []).sort();
+    // The country the manifest decided is there (canonicalised from the alpha-3 it was
+    // written in), and the store's own proposal for GB is nowhere in it.
+    expect(paths).toContain('products.pro_monthly.price.ES');
+    expect(paths).not.toContain('products.pro_monthly.price.GB');
+    for (const entry of pricing?.diff ?? []) {
+      expect(entry.note ?? 'Declared in the manifest.').not.toContain('conversion');
+    }
+  });
+
+  it('still converts when the manifest states a base price and nothing else', async () => {
+    const differ = appleProductsDiffer();
+    const drafts = await differ.plan({
+      store: 'apple',
+      manifest: manifestFor({
+        monetization: {
+          products: [subscription({ price: { base: '4.99', baseTerritory: 'US' } })],
+        },
+      }),
+      state: await stateOf('apple', productState()),
+      repoRoot: '/tmp',
+      proposals: CONVERTING,
+    });
+    const pricing = drafts.find((draft) => draft.kind === 'set_product_pricing');
+    expect(pricing?.diff.map((entry) => entry.path)).toContain('products.pro_monthly.price.GB');
+  });
+
   it('asks for input rather than pricing when the store cannot convert', async () => {
     const differ = appleProductsDiffer();
     const drafts = await differ.plan({

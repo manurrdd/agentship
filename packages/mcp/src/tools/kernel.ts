@@ -24,6 +24,7 @@ import {
   DETAIL_DESCRIPTION,
   idArg,
   type Progress,
+  parseInput,
   projectDirArg,
   type ToolDefinition,
 } from './types.js';
@@ -63,7 +64,7 @@ This is a read: it never changes anything. It fails per store, so one store lack
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
 
   async handler(session, args) {
-    const input = statusSchema.parse(args);
+    const input = parseInput(statusSchema, args);
     const detail: Detail = input.detail ?? 'concise';
     const repoRoot = await session.requireProject(input.projectDir);
     const kernel = await session.engine.kernel(repoRoot);
@@ -178,7 +179,7 @@ Plans are cheap and always fresh; re-plan whenever anything may have changed rat
   annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: true },
 
   async handler(session, args, progress) {
-    const input = planSchema.parse(args);
+    const input = parseInput(planSchema, args);
     const detail: Detail = input.detail ?? 'concise';
     const repoRoot = await session.requireProject(input.projectDir);
     const kernel = await session.engine.kernel(repoRoot);
@@ -269,7 +270,7 @@ function nextStepForPlan(actions: number, approvals: number): string {
   if (approvals === 0) {
     return 'No approvals are required. Call agentship_apply with this planId to execute.';
   }
-  return 'Show the user the diff of every needs_approval action and ask about each one separately. Pass only the ids they approved to agentship_apply.';
+  return 'Show the user the diff of every needs_approval action. If they approve the lot, pass this planId as the single approval; if they pick some, pass just those action ids. Either way, pass only what they actually approved.';
 }
 
 const applySchema = z.object({
@@ -278,7 +279,7 @@ const applySchema = z.object({
   approvals: approvalsArg
     .optional()
     .describe(
-      'Action ids the human explicitly approved after seeing their diff, one entry per approved action. Omit for none. Never include an id the user did not approve in this conversation.',
+      'What the human approved after seeing it. Either action ids, one per approved action, or the planId on its own — which approves every action in that exact plan, because a plan id is the hash of its action set and stops matching the moment anything changes. Use the planId when the user approved the plan as a whole ("do it", "adelante", "sube eso"); use action ids when they picked some and not others. Submitting for review and releasing a held version are never covered by a plan approval and always need their own id. Omit for none, and never include anything the user did not approve in this conversation.',
     ),
   dryRun: z
     .enum(['local', 'server'])
@@ -302,7 +303,7 @@ Calling it with no approvals at all is useful and safe — everything classified
 
 Read the response in this order:
 1. outcomes — what ran (done / failed / skipped) and what was withheld and why.
-2. staleApprovals and driftDetected — the store moved, so some approvals no longer match. This is expected: applying part of a plan changes the store, so the ids rotate. Do not treat it as an error and do not retry the same ids.
+2. staleApprovals and driftDetected — the store moved, so some approvals no longer match. An action id now covers only what the action will make true, so it survives unrelated store movement; a planId does not, because it names the whole set. Re-plan, show the user what changed, and approve against the new ids. Do not treat it as an error and do not retry the same ids.
 3. plan — the freshly built plan. Present its diffs again and ask for approval against THESE ids.
 4. emittedPending — console work that now blocks progress; continue with agentship_pending.
 
@@ -316,7 +317,7 @@ If the run was interrupted (a crash, a lost connection), call agentship_resume: 
   },
 
   async handler(session, args, progress) {
-    const input = applySchema.parse(args);
+    const input = parseInput(applySchema, args);
     return runApply(session, progress, {
       projectDir: input.projectDir,
       planId: input.planId,
@@ -356,7 +357,7 @@ Safe to call when unsure: with nothing left to do it returns an empty outcome li
   },
 
   async handler(session, args, progress) {
-    const input = resumeSchema.parse(args);
+    const input = parseInput(resumeSchema, args);
     return runApply(session, progress, {
       projectDir: input.projectDir,
       approvals: input.approvals,
