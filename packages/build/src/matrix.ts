@@ -134,11 +134,17 @@ export async function buildSupport(
     };
   }
   if (platform === 'ios' && process.platform !== 'darwin') {
+    // What the manifest is missing is a fact about the manifest, so it is reported here too.
+    // This machine cannot archive an iPhone app, but the user can still be told that
+    // `release.buildNumber` is absent — and told the value their own `pubspec.yaml` already
+    // states. Withholding that until someone opens a Mac helps nobody.
+    const missingHere = missingBuildInput(manifest, shape, platform);
     return {
       builder,
       platform,
       status: 'host_unsupported',
       detail: `iOS applications can only be archived and signed on macOS; this machine runs ${process.platform}.`,
+      ...(missingHere.length === 0 ? {} : { needsInput: missingHere }),
       remediation:
         'Build the .ipa on a Mac (or a macOS CI runner) and point release.artifacts.apple at it; everything else Agentship does works from here.',
     };

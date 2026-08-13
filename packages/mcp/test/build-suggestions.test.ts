@@ -32,10 +32,17 @@ describe('project-derived build input suggestions', () => {
       projectDir: harness.repoRoot,
       action: 'status',
     });
+    // Found by platform, not by position, and asserted on every host: whether this machine
+    // can archive an iPhone app has nothing to do with what the manifest is missing. On
+    // Linux the iOS entry is `host_unsupported`, and it still has to carry the suggestion.
     const support = status.payload['support'] as {
+      platform?: string;
+      status?: string;
       suggestedInputs?: { path: string; value: string; source: string }[];
     }[];
-    expect(support[0]?.suggestedInputs).toContainEqual(
+    const ios = support.find((entry) => entry.platform === 'ios');
+    expect(ios, JSON.stringify(support)).toBeDefined();
+    expect(ios?.suggestedInputs).toContainEqual(
       expect.objectContaining({ path: 'release.buildNumber', value: '9', source: 'pubspec.yaml' }),
     );
     expect(status.payload['nextStep']).toContain('do not ask the user to rediscover');
